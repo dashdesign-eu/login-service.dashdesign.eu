@@ -301,6 +301,12 @@ app.get('/health', async (_req, res) => {
   res.json({ ok: true, service: 'dashdesign-login-service', ts: new Date().toISOString(), dbNow: db.rows[0].now });
 });
 
+app.get('/ui/login-button-template', (_req, res) => {
+  res.type('application/json').send({
+    html: 'Mit <span style="font-weight:800;color:#0585ff;">dashdesign;</span> anmelden.'
+  });
+});
+
 app.post('/auth/email/register/start', authLimiter, async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password || password.length < 8) {
