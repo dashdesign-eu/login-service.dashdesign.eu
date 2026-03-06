@@ -1,45 +1,43 @@
 # login-service.dashdesign.eu
 
-Central auth service for **dashdesign; Konto**.
+Central auth service for **dashdesign**.
 
-## Current scope (phase 1)
-- Health endpoint
-- Auth provider starter endpoints (email/google/apple)
-- OAuth callback placeholders
-- Onboarding profile endpoint scaffold
-- PostgreSQL persistence (users, onboarding, analytics events)
+## JWT claims format
+Access token payload includes:
 
-## Endpoints
+```json
+{
+  "sub": "email:user@example.com",
+  "email": "user@example.com",
+  "provider": "email",
+  "roles": ["monitor_viewer", "monitor_editor", "admin"],
+  "iss": "dashdesign-login-service",
+  "aud": "dashdesign-apps"
+}
+```
+
+`roles` are assigned by email allowlists from env:
+- `MONITOR_VIEWER_EMAILS`
+- `MONITOR_EDITOR_EMAILS`
+- `MONITOR_ADMIN_EMAILS`
+
+Role inheritance:
+- `admin` ⇒ `monitor_editor` + `monitor_viewer`
+- `monitor_editor` ⇒ `monitor_viewer`
+
+## New auth/session endpoints
+- `GET /auth/me` (Bearer access token) → DB-backed user + effective roles
+- `GET /auth/session` (Bearer access token) → decoded claims (introspection helper)
+
+## Existing core endpoints
+- `POST /auth/email/register/start`
+- `POST /auth/email/register/verify`
+- `POST /auth/login`
+- `POST /auth/refresh`
 - `GET /health`
-- `POST /auth/email/login`
-- `GET /auth/google/start`
-- `GET /auth/google/callback`
-- `GET /auth/apple/start`
-- `GET /auth/apple/callback`
-- `POST /onboarding/profile`
 
-## Data storage
-Service stores data in PostgreSQL.
-
-Tables:
-- `users`
-- `onboarding_profiles`
-- `analytics_events`
-
-With docker-compose, database files are persisted in:
-- `./postgres-data`
-
-## Run (node)
+## Run
 ```bash
 npm install
 npm run dev
-```
-
-## Run (docker)
-```bash
-cp .env.example .env
-# set secrets in .env (OAuth + postgres password)
-
-docker compose up -d --build
-curl http://localhost:8080/health
 ```

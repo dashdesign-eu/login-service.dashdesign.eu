@@ -42,12 +42,49 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+function parseRoleList(name) {
+  return (process.env[name] || '')
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+const MONITOR_ADMIN_EMAILS = parseRoleList('MONITOR_ADMIN_EMAILS');
+const MONITOR_EDITOR_EMAILS = parseRoleList('MONITOR_EDITOR_EMAILS');
+const MONITOR_VIEWER_EMAILS = parseRoleList('MONITOR_VIEWER_EMAILS');
+
+function resolveRoles(email) {
+  const normalized = String(email || '').toLowerCase().trim();
+  const roles = new Set();
+  if (MONITOR_VIEWER_EMAILS.includes(normalized)) roles.add('monitor_viewer');
+  if (MONITOR_EDITOR_EMAILS.includes(normalized)) roles.add('monitor_editor');
+  if (MONITOR_ADMIN_EMAILS.includes(normalized)) roles.add('admin');
+  if (roles.has('admin')) roles.add('monitor_editor');
+  if (roles.has('monitor_editor')) roles.add('monitor_viewer');
+  return [...roles];
+}
+
+function readAccessClaims(req) {
+  const auth = req.get('authorization') || '';
+  const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : null;
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_ACCESS_SECRET, {
+      issuer: 'dashdesign-login-service',
+      audience: 'dashdesign-apps',
+    });
+  } catch {
+    return null;
+  }
+}
+
 function sha256(input) {
   return crypto.createHash('sha256').update(String(input)).digest('hex');
 }
 
 function issueTokens(user) {
-  const accessToken = jwt.sign({ sub: user.id, email: user.email, provider: user.provider }, JWT_ACCESS_SECRET, {
+  const roles = resolveRoles(user.email);
+  const accessToken = jwt.sign({ sub: user.id, email: user.email, provider: user.provider, roles }, JWT_ACCESS_SECRET, {
     expiresIn: ACCESS_TTL_SECONDS,
     issuer: 'dashdesign-login-service',
     audience: 'dashdesign-apps',
@@ -59,7 +96,7 @@ function issueTokens(user) {
     audience: 'dashdesign-apps',
   });
 
-  return { accessToken, refreshToken };
+  return { accessToken, refreshToken, roles: resolveRoles(user.email) };
 }
 
 async function saveRefreshToken(userId, refreshToken) {
@@ -152,11 +189,11 @@ app.post('/auth/email/register/verify', authLimiter, async (req, res) => {
   await pool.query('UPDATE email_otp_codes SET consumed_at = NOW() WHERE id = $1', [otp.id]);
 
   const user = { id: userId, email: normalized, provider: 'email' };
-  const { accessToken, refreshToken } = issueTokens(user);
+  const { accessToken, refreshToken, roles } = issueTokens(user);
   await saveRefreshToken(userId, refreshToken);
   await audit(req, 'register_success', userId, { email: normalized });
 
-  return res.json({ ok: true, token: `Bearer ${accessToken}`, refreshToken, payload: user });
+  return res.json({ ok: true, token: `Bearer ${accessToken}`, refreshToken, payload: { ...user, roles } });
 });
 
 app.post('/auth/login', authLimiter, async (req, res) => {
@@ -184,11 +221,11 @@ app.post('/auth/login', authLimiter, async (req, res) => {
   await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
 
   const payloadUser = { id: user.id, email: user.email, provider: user.provider };
-  const { accessToken, refreshToken } = issueTokens(payloadUser);
+  const { accessToken, refreshToken, roles } = issueTokens(payloadUser);
   await saveRefreshToken(user.id, refreshToken);
   await audit(req, 'login_success', user.id, {});
 
-  return res.json({ ok: true, token: `Bearer ${accessToken}`, refreshToken, payload: payloadUser });
+  return res.json({ ok: true, token: `Bearer ${accessToken}`, refreshToken, payload: { ...payloadUser, roles } });
 });
 
 app.post('/auth/refresh', authLimiter, async (req, res) => {
@@ -216,11 +253,11 @@ app.post('/auth/refresh', authLimiter, async (req, res) => {
   if (userQ.rowCount === 0) return res.status(401).json({ ok: false, error: 'user_not_found' });
   const user = userQ.rows[0];
 
-  const { accessToken, refreshToken: newRefresh } = issueTokens(user);
+  const { accessToken, refreshToken: newRefresh, roles } = issueTokens(user);
   await saveRefreshToken(user.id, newRefresh);
   await pool.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [tok.id]);
 
-  return res.json({ ok: true, token: `Bearer ${accessToken}`, refreshToken: newRefresh, payload: user });
+  return res.json({ ok: true, token: `Bearer ${accessToken}`, refreshToken: newRefresh, payload: { ...user, roles } });
 });
 
 app.get('/auth/google/start', (_req, res) => {
@@ -241,6 +278,23 @@ app.get('/auth/apple/start', (_req, res) => {
 
 app.get('/auth/apple/callback', (_req, res) => {
   res.json({ ok: true, mode: 'stub', message: 'Apple callback scaffold endpoint.' });
+});
+
+
+app.get('/auth/me', authLimiter, async (req, res) => {
+  const claims = readAccessClaims(req);
+  if (!claims) return res.status(401).json({ ok: false, error: 'auth_invalid' });
+  const userQ = await pool.query('SELECT id, email, provider FROM users WHERE id = $1', [claims.sub]);
+  if (userQ.rowCount === 0) return res.status(404).json({ ok: false, error: 'user_not_found' });
+  const user = userQ.rows[0];
+  const roles = resolveRoles(user.email);
+  return res.json({ ok: true, user: { id: user.id, email: user.email, provider: user.provider, roles }, claims: { ...claims, roles } });
+});
+
+app.get('/auth/session', authLimiter, async (req, res) => {
+  const claims = readAccessClaims(req);
+  if (!claims) return res.status(401).json({ ok: false, error: 'auth_invalid' });
+  return res.json({ ok: true, claims });
 });
 
 app.post('/onboarding/profile', authLimiter, async (req, res) => {
