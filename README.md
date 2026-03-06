@@ -7,7 +7,7 @@ Central auth service for **dashdesign; Konto**.
 - Auth provider starter endpoints (email/google/apple)
 - OAuth callback placeholders
 - Onboarding profile endpoint scaffold
-- Local JSON data persistence
+- PostgreSQL persistence (users, onboarding, analytics events)
 
 ## Endpoints
 - `GET /health`
@@ -19,14 +19,15 @@ Central auth service for **dashdesign; Konto**.
 - `POST /onboarding/profile`
 
 ## Data storage
-Service stores data in:
-- **Container path:** `/data/login-service.json`
-- **With docker-compose:** mapped to host `./data/login-service.json`
+Service stores data in PostgreSQL.
 
-Stored objects:
-- users
-- onboarding profiles
-- (reserved) analytics events
+Tables:
+- `users`
+- `onboarding_profiles`
+- `analytics_events`
+
+With docker-compose, database files are persisted in:
+- `./postgres-data`
 
 ## Run (node)
 ```bash
@@ -37,7 +38,7 @@ npm run dev
 ## Run (docker)
 ```bash
 cp .env.example .env
-# set secrets in .env
+# set secrets in .env (OAuth + postgres password)
 
 docker compose up -d --build
 curl http://localhost:8080/health

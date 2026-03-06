@@ -1,60 +1,40 @@
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
+import { initDb, pool } from './db.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:8080';
-const DATA_DIR = process.env.DATA_DIR || '/data';
-const DATA_FILE = path.join(DATA_DIR, 'login-service.json');
-
-function ensureStore() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(
-      DATA_FILE,
-      JSON.stringify({ users: {}, onboarding: {}, events: [] }, null, 2),
-      'utf8'
-    );
-  }
-}
-
-function readStore() {
-  ensureStore();
-  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-}
-
-function writeStore(store) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2), 'utf8');
-}
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'dashdesign-login-service', ts: new Date().toISOString(), dataFile: DATA_FILE });
+app.get('/health', async (_req, res) => {
+  const db = await pool.query('SELECT NOW() as now');
+  res.json({ ok: true, service: 'dashdesign-login-service', ts: new Date().toISOString(), dbNow: db.rows[0].now });
 });
 
-app.post('/auth/email/login', (req, res) => {
+app.post('/auth/email/login', async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ ok: false, error: 'email_required' });
 
-  const store = readStore();
   const userId = `email:${email.toLowerCase().trim()}`;
-  store.users[userId] = {
-    id: userId,
-    email: email.toLowerCase().trim(),
-    provider: 'email',
-    lastLoginAt: new Date().toISOString()
-  };
-  writeStore(store);
+  const normalized = email.toLowerCase().trim();
+
+  await pool.query(
+    `INSERT INTO users (id, email, provider, last_login_at)
+     VALUES ($1, $2, 'email', NOW())
+     ON CONFLICT (id) DO UPDATE SET last_login_at = NOW(), email = EXCLUDED.email`,
+    [userId, normalized]
+  );
+
+  const { rows } = await pool.query('SELECT id, email, provider, last_login_at FROM users WHERE id = $1', [userId]);
 
   return res.json({
     ok: true,
     mode: 'stub',
     message: 'Email login scaffolding active. Integrate passwordless/otp next.',
-    user: store.users[userId]
+    user: rows[0]
   });
 });
 
@@ -78,30 +58,56 @@ app.get('/auth/apple/callback', (_req, res) => {
   res.json({ ok: true, mode: 'stub', message: 'Apple callback scaffold endpoint.' });
 });
 
-app.post('/onboarding/profile', (req, res) => {
+app.post('/onboarding/profile', async (req, res) => {
   const { userId, hometown, birthdate, agbAccepted } = req.body || {};
   if (!userId || !hometown || !birthdate || typeof agbAccepted !== 'boolean') {
     return res.status(400).json({ ok: false, error: 'missing_required_fields' });
   }
 
-  const store = readStore();
-  store.onboarding[userId] = {
-    userId,
-    hometown,
-    birthdate,
-    agbAccepted,
-    updatedAt: new Date().toISOString()
-  };
-  writeStore(store);
+  const userCheck = await pool.query('SELECT id FROM users WHERE id = $1', [userId]);
+  if (userCheck.rowCount === 0) {
+    return res.status(404).json({ ok: false, error: 'user_not_found' });
+  }
 
-  return res.json({
-    ok: true,
-    message: 'Onboarding profile saved.',
-    profile: store.onboarding[userId]
-  });
+  await pool.query(
+    `INSERT INTO onboarding_profiles (user_id, hometown, birthdate, agb_accepted, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (user_id) DO UPDATE
+     SET hometown = EXCLUDED.hometown,
+         birthdate = EXCLUDED.birthdate,
+         agb_accepted = EXCLUDED.agb_accepted,
+         updated_at = NOW()`,
+    [userId, hometown, birthdate, agbAccepted]
+  );
+
+  const { rows } = await pool.query(
+    'SELECT user_id as "userId", hometown, birthdate, agb_accepted as "agbAccepted", updated_at as "updatedAt" FROM onboarding_profiles WHERE user_id = $1',
+    [userId]
+  );
+
+  return res.json({ ok: true, message: 'Onboarding profile saved.', profile: rows[0] });
 });
 
-app.listen(PORT, () => {
-  ensureStore();
-  console.log(`login-service listening on ${APP_BASE_URL} (port ${PORT})`);
+app.post('/analytics/event', async (req, res) => {
+  const { userId = null, eventType, payload = {} } = req.body || {};
+  if (!eventType) return res.status(400).json({ ok: false, error: 'event_type_required' });
+
+  await pool.query(
+    'INSERT INTO analytics_events (user_id, event_type, payload) VALUES ($1, $2, $3::jsonb)',
+    [userId, eventType, JSON.stringify(payload)]
+  );
+
+  return res.json({ ok: true });
+});
+
+async function start() {
+  await initDb();
+  app.listen(PORT, () => {
+    console.log(`login-service listening on ${APP_BASE_URL} (port ${PORT})`);
+  });
+}
+
+start().catch((err) => {
+  console.error('Failed to start login-service:', err);
+  process.exit(1);
 });
