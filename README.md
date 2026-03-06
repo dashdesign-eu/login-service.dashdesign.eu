@@ -2,6 +2,10 @@
 
 Central auth service for **dashdesign**.
 
+## Portal
+- `GET /login` → portal login UI (email + Google/Apple actions)
+- `GET /account` → account page (shows current user data from token)
+
 ## JWT claims format
 Access token payload includes:
 
@@ -25,15 +29,27 @@ Role inheritance:
 - `admin` ⇒ `monitor_editor` + `monitor_viewer`
 - `monitor_editor` ⇒ `monitor_viewer`
 
-## New auth/session endpoints
+## Auth/session endpoints
 - `GET /auth/me` (Bearer access token) → DB-backed user + effective roles
-- `GET /auth/session` (Bearer access token) → decoded claims (introspection helper)
+- `GET /auth/session` (Bearer access token) → decoded claims
+- `POST /auth/login`
+- `POST /auth/refresh`
+
+## Redirect login flow (reusable for apps)
+1. App opens: `GET /auth/redirect/start?returnTo=<APP_CALLBACK_URL>`
+2. User logs in on portal (`/login`), then service redirects to `returnTo?callbackToken=...`
+3. App backend exchanges token:
+   - `POST /auth/redirect/exchange`
+   - body: `{ "callbackToken": "...", "returnTo": "..." }`
+   - returns `{ token, refreshToken, payload }`
+
+Security:
+- one-time callback token, short TTL
+- returnTo must pass `REDIRECT_ALLOWED_ORIGINS`
 
 ## Existing core endpoints
 - `POST /auth/email/register/start`
 - `POST /auth/email/register/verify`
-- `POST /auth/login`
-- `POST /auth/refresh`
 - `GET /health`
 
 ## Run
