@@ -9,6 +9,11 @@ const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:8080';
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+
+app.get('/', (_req, res) => {
+  res.json({ ok: true, service: 'dashdesign-login-service' });
+});
+
 app.get('/health', async (_req, res) => {
   const db = await pool.query('SELECT NOW() as now');
   res.json({ ok: true, service: 'dashdesign-login-service', ts: new Date().toISOString(), dbNow: db.rows[0].now });
