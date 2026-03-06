@@ -1,25 +1,60 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:8080';
+const DATA_DIR = process.env.DATA_DIR || '/data';
+const DATA_FILE = path.join(DATA_DIR, 'login-service.json');
+
+function ensureStore() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(DATA_FILE)) {
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify({ users: {}, onboarding: {}, events: [] }, null, 2),
+      'utf8'
+    );
+  }
+}
+
+function readStore() {
+  ensureStore();
+  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+}
+
+function writeStore(store) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2), 'utf8');
+}
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'dashdesign-login-service', ts: new Date().toISOString() });
+  res.json({ ok: true, service: 'dashdesign-login-service', ts: new Date().toISOString(), dataFile: DATA_FILE });
 });
 
 app.post('/auth/email/login', (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ ok: false, error: 'email_required' });
+
+  const store = readStore();
+  const userId = `email:${email.toLowerCase().trim()}`;
+  store.users[userId] = {
+    id: userId,
+    email: email.toLowerCase().trim(),
+    provider: 'email',
+    lastLoginAt: new Date().toISOString()
+  };
+  writeStore(store);
+
   return res.json({
     ok: true,
     mode: 'stub',
     message: 'Email login scaffolding active. Integrate passwordless/otp next.',
-    user: { id: `email:${email}`, email }
+    user: store.users[userId]
   });
 });
 
@@ -44,17 +79,29 @@ app.get('/auth/apple/callback', (_req, res) => {
 });
 
 app.post('/onboarding/profile', (req, res) => {
-  const { hometown, birthdate, agbAccepted } = req.body || {};
-  if (!hometown || !birthdate || typeof agbAccepted !== 'boolean') {
+  const { userId, hometown, birthdate, agbAccepted } = req.body || {};
+  if (!userId || !hometown || !birthdate || typeof agbAccepted !== 'boolean') {
     return res.status(400).json({ ok: false, error: 'missing_required_fields' });
   }
+
+  const store = readStore();
+  store.onboarding[userId] = {
+    userId,
+    hometown,
+    birthdate,
+    agbAccepted,
+    updatedAt: new Date().toISOString()
+  };
+  writeStore(store);
+
   return res.json({
     ok: true,
-    message: 'Onboarding profile scaffold saved.',
-    profile: { hometown, birthdate, agbAccepted }
+    message: 'Onboarding profile saved.',
+    profile: store.onboarding[userId]
   });
 });
 
 app.listen(PORT, () => {
+  ensureStore();
   console.log(`login-service listening on ${APP_BASE_URL} (port ${PORT})`);
 });

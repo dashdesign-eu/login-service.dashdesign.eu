@@ -1,0 +1,14 @@
+services:
+  login-service:
+    build: .
+    container_name: login-service-dashdesign
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data
