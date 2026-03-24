@@ -1,4 +1,4 @@
-import { REDIRECT_ALLOWED_ORIGINS } from '../config/env.js';
+import { REDIRECT_ALLOWED_ORIGINS, ALLOW_INSECURE_REDIRECTS } from '../config/env.js';
 
 export function safeReturnTo(input) {
   if (!input) return null;
@@ -13,9 +13,11 @@ export function safeReturnTo(input) {
     const url = new URL(raw);
     const hostname = url.hostname;
     const isLocalhost = ['localhost', '127.0.0.1'].includes(hostname);
+    if (!ALLOW_INSECURE_REDIRECTS && !isLocalhost && url.protocol !== 'https:') {
+      return null;
+    }
 
     if (!REDIRECT_ALLOWED_ORIGINS.length) {
-      if (url.protocol !== 'https:' && !isLocalhost) return null;
       return url.toString();
     }
 

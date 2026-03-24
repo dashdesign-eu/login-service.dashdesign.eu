@@ -5,6 +5,12 @@ const toPositiveNumber = (value, fallback) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
+const parseBoolean = (value, fallback = false) => {
+  if (typeof value === 'boolean') return value;
+  if (value === undefined || value === null || value === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+};
+
 const splitList = (value = '') =>
   String(value)
     .split(',')
@@ -41,6 +47,7 @@ export const config = Object.freeze({
   APPLE_KEY_ID: process.env.APPLE_KEY_ID || '',
   APPLE_PRIVATE_KEY_PATH: process.env.APPLE_PRIVATE_KEY_PATH || './secrets/AuthKey.p8',
   APPLE_REDIRECT_URI: process.env.APPLE_REDIRECT_URI || '',
+  ALLOW_INSECURE_REDIRECTS: parseBoolean(process.env.ALLOW_INSECURE_REDIRECTS, false),
   GOOGLE_CONFIGURED: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
   APPLE_CONFIGURED: !!(process.env.APPLE_TEAM_ID && process.env.APPLE_CLIENT_ID && process.env.APPLE_KEY_ID),
 });
@@ -53,6 +60,7 @@ export const {
   APPLE_REDIRECT_URI,
   APPLE_TEAM_ID,
   APP_BASE_URL,
+  ALLOW_INSECURE_REDIRECTS,
   ACCESS_TTL_SECONDS,
   BOOTSTRAP_ADMIN_NAME_LENGTH,
   BOOTSTRAP_ADMIN_PASSWORD_LENGTH,

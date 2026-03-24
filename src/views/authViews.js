@@ -33,7 +33,7 @@ export function renderPortalHtml({ returnTo = '' } = {}) {
     <h2>dashdesign Login</h2>
     <div class="card">
       <p class="muted">Melde dich mit deinem dashdesign; Account an.</p>
-      <form id="f" autocomplete="on">
+      <form id="f" autocomplete="on" method="post" action="/auth/login">
         <label>Benutzername</label><br/>
         <input required type="text" id="u" name="username" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false"/><br/><br/>
         <label>Passwort</label><br/>
@@ -131,11 +131,12 @@ const bootstrapSession = async () => {
 };
 
 const params = new URLSearchParams(window.location.search);
-if (params.get('username')) {
+if (params.get('username') || params.get('password')) {
   const pre = params.get('username');
   const input = document.getElementById('u');
   if (input) input.value = pre;
   params.delete('username');
+  params.delete('password');
   const nextUrl = params.toString();
   const cleanUrl = nextUrl ? '/login?' + nextUrl : '/login';
   if (window.history?.replaceState) {
