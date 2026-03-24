@@ -34,11 +34,11 @@ export function renderPortalHtml({ returnTo = '' } = {}) {
       <p class="muted">Melde dich mit deinem dashdesign Account an.</p>
       <form id="f">
         <label>Benutzername oder E-Mail</label><br/>
-        <input required type="text" id="u" autocomplete="username"/><br/><br/>
+        <input required type="text" id="u" name="username" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false"/><br/><br/>
         <label>Passwort</label><br/>
         <input required type="password" id="p"/>
         <div id="err"></div>
-        <button type="submit">Anmelden (E-Mail)</button>
+        <button type="submit">Anmelden</button>
         <div id="status" class="status status-bad">Bin ich angemeldet?</div>
         <p class="muted" style="margin:8px 0">Hier siehst du sofort, ob du angemeldet bist.</p>
         <button class="ghost" id="whoami" type="button">Bin ich angemeldet?</button>

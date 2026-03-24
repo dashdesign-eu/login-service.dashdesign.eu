@@ -25,6 +25,10 @@ import { safeReturnTo } from '../lib/urls.js';
 import { sha256 } from '../lib/crypto.js';
 import { resolveRoles } from '../lib/roles.js';
 
+function resolveIdentifier(body) {
+  return String(body?.username || body?.email || '').trim();
+}
+
 export function createAuthRouter() {
   const router = express.Router();
 
@@ -84,10 +88,11 @@ export function createAuthRouter() {
   });
 
   router.post('/auth/login', authLimiter, async (req, res) => {
-    const { username, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ ok: false, error: 'invalid_input' });
+    const identifier = resolveIdentifier(req.body);
+    const password = String(req.body?.password || '').trim();
+    if (!identifier || !password) return res.status(400).json({ ok: false, error: 'invalid_input' });
 
-    const result = await performPasswordLogin(username, password);
+    const result = await performPasswordLogin(identifier, password);
     if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
 
     await audit(req, 'login_success', result.user.id, {});
@@ -125,11 +130,13 @@ export function createAuthRouter() {
   });
 
   router.post('/auth/redirect/complete', authLimiter, async (req, res) => {
-    const { username, password, returnTo } = req.body || {};
+    const identifier = resolveIdentifier(req.body);
+    const password = String(req.body?.password || '').trim();
+    const returnTo = req.body?.returnTo;
     const safe = safeReturnTo(returnTo);
-    if (!username || !password || !safe) return res.status(400).json({ ok: false, error: 'invalid_input' });
+    if (!identifier || !password || !safe) return res.status(400).json({ ok: false, error: 'invalid_input' });
 
-    const result = await performPasswordLogin(username, password);
+    const result = await performPasswordLogin(identifier, password);
     if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
 
     const callbackToken = await issueRedirectCallbackToken(result.user.id, safe);
