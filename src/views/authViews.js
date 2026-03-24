@@ -11,6 +11,7 @@ export function renderPortalHtml({ returnTo = '' } = {}) {
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>dashdesign Login</title>
   <style>
+    *{box-sizing:border-box}
     body{font-family:Inter,system-ui,Arial,sans-serif;background:#0f1116;color:#fff;margin:0}
     .wrap{max-width:460px;margin:40px auto;padding:24px}
     .card{background:#171a22;border:1px solid #2a2f3d;border-radius:12px;padding:20px}
@@ -32,14 +33,14 @@ export function renderPortalHtml({ returnTo = '' } = {}) {
     <h2>dashdesign Login</h2>
     <div class="card">
       <p class="muted">Melde dich mit deinem dashdesign; Account an.</p>
-      <form id="f">
+      <form id="f" autocomplete="on">
         <label>Benutzername</label><br/>
         <input required type="text" id="u" name="username" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false"/><br/><br/>
         <label>Passwort</label><br/>
-        <input required type="password" id="p"/>
+        <input required type="password" id="p" name="password" autocomplete="current-password"/>
         <div id="err"></div>
         <button type="submit">Anmelden</button>
-        <div id="status" class="status status-bad">Bitte melde dich mit deinem Zugang an.</div>
+        <div id="status" class="status" style="display:none"></div>
         <div class="row">
           <button class="ghost" id="g" type="button">Google</button>
           <button class="ghost" id="a" type="button">Apple</button>
@@ -61,6 +62,7 @@ const setStatus = (text, ok = false) => {
   if (!statusEl) return;
   statusEl.textContent = text;
   statusEl.className = 'status ' + (ok ? 'status-ok' : 'status-bad');
+  statusEl.style.display = '';
 };
 
 const ERROR_TEXT = {
@@ -68,6 +70,8 @@ const ERROR_TEXT = {
   password_not_set: 'Für dieses Konto ist kein Passwort gesetzt.',
   invalid_input: 'Bitte Benutzername und Passwort angeben.',
 };
+
+const isInternalReturnTo = (url = '') => typeof url === 'string' && url.startsWith('/');
 
 const checkSignedIn = async () => {
   const t = localStorage.getItem('dashdesign_access_token') || '';
@@ -91,6 +95,10 @@ const checkSignedIn = async () => {
 const continueWithSession = async () => {
   const token = localStorage.getItem('dashdesign_access_token') || '';
   if (!token || !returnTo) return false;
+  if (isInternalReturnTo(returnTo)) {
+    location.replace(returnTo);
+    return true;
+  }
   try {
     const res = await fetch('/auth/redirect/session', {
       method: 'POST',
@@ -154,8 +162,8 @@ document.getElementById('f').onsubmit = async (e) => {
   err('');
   const username = document.getElementById('u').value.trim();
   const password = document.getElementById('p').value;
-  const endpoint = returnTo ? '/auth/redirect/complete' : '/auth/login';
-  const body = returnTo ? { username, password, returnTo } : { username, password };
+  const endpoint = returnTo && !isInternalReturnTo(returnTo) ? '/auth/redirect/complete' : '/auth/login';
+  const body = returnTo && !isInternalReturnTo(returnTo) ? { username, password, returnTo } : { username, password };
   const res = await fetch(endpoint, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.ok) {
@@ -164,7 +172,12 @@ document.getElementById('f').onsubmit = async (e) => {
   }
 
   if (returnTo) {
-    location.replace(data.redirectTo);
+    if (isInternalReturnTo(returnTo)) {
+      if (token) localStorage.setItem('dashdesign_access_token', token);
+      location.replace(returnTo);
+    } else {
+      location.replace(data.redirectTo);
+    }
     return;
   }
 
@@ -207,7 +220,7 @@ export function renderAccountHtml() {
     <h2>Account</h2>
     <div class="card">
       <h3>Profil</h3>
-      <div id="status" class="status status-bad">Nicht angemeldet.</div>
+      <div id="status" class="status" style="display:none"></div>
       <div id="out">Lade…</div>
 
       <h4>Kontodaten</h4>
@@ -241,6 +254,7 @@ const setStatus = (text, ok = false) => {
   if (!s) return;
   s.textContent = text;
   s.className = 'status ' + (ok ? 'status-ok' : 'status-bad');
+  s.style.display = '';
 };
 
 const toDateTime = (v) => {
@@ -282,7 +296,8 @@ const load = async () => {
   const token = localStorage.getItem('dashdesign_access_token') || '';
   if (!token) {
     localStorage.removeItem('dashdesign_access_token');
-    location.replace('/login?returnTo=' + encodeURIComponent('/account'));
+    const returnTo = encodeURIComponent(location.pathname + location.search);
+    location.replace('/login?returnTo=' + returnTo);
     return;
   }
 
@@ -291,7 +306,8 @@ const load = async () => {
   if (!res.ok || !data?.ok) {
     localStorage.removeItem('dashdesign_access_token');
     setStatus('Session nicht gültig. Weiterleitung zum Login…', false);
-    location.replace('/login?returnTo=' + encodeURIComponent('/account'));
+    const returnTo = encodeURIComponent(location.pathname + location.search);
+    location.replace('/login?returnTo=' + returnTo);
     return;
   }
 

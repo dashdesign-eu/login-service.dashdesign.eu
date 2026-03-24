@@ -2,8 +2,15 @@ import { REDIRECT_ALLOWED_ORIGINS } from '../config/env.js';
 
 export function safeReturnTo(input) {
   if (!input) return null;
+  const raw = String(input).trim();
+  if (!raw) return null;
+
+  if (raw.startsWith('/') && !raw.startsWith('//')) {
+    return raw;
+  }
+
   try {
-    const url = new URL(String(input));
+    const url = new URL(raw);
     const hostname = url.hostname;
     const isLocalhost = ['localhost', '127.0.0.1'].includes(hostname);
 

@@ -10,6 +10,7 @@ import {
   OTP_TTL_MINUTES,
   JWT_REFRESH_SECRET,
   BOOTSTRAP_ADMIN_PROVIDER,
+  APP_BASE_URL,
   GOOGLE_CONFIGURED,
   APPLE_CONFIGURED,
 } from '../config/env.js';
@@ -27,6 +28,14 @@ import { resolveRoles } from '../lib/roles.js';
 
 function resolveIdentifier(body) {
   return String(body?.username || body?.email || '').trim();
+}
+
+function toAbsoluteReturnUrl(input) {
+  if (!input) return null;
+  if (typeof input === 'string' && input.startsWith('/')) {
+    return new URL(input, APP_BASE_URL).toString();
+  }
+  return input;
 }
 
 export function createAuthRouter() {
@@ -140,7 +149,7 @@ export function createAuthRouter() {
     if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
 
     const callbackToken = await issueRedirectCallbackToken(result.user.id, safe);
-    const redirectUrl = new URL(safe);
+    const redirectUrl = new URL(toAbsoluteReturnUrl(safe));
     redirectUrl.searchParams.set('callbackToken', callbackToken);
 
     await audit(req, 'redirect_login_success', result.user.id, { returnTo: safe });
@@ -158,7 +167,7 @@ export function createAuthRouter() {
     if (userQ.rowCount === 0) return res.status(404).json({ ok: false, error: 'user_not_found' });
 
     const callbackToken = await issueRedirectCallbackToken(claims.sub, safe);
-    const redirectUrl = new URL(safe);
+    const redirectUrl = new URL(toAbsoluteReturnUrl(safe));
     redirectUrl.searchParams.set('callbackToken', callbackToken);
 
     await audit(req, 'redirect_session_continue', claims.sub, { returnTo: safe });
