@@ -31,7 +31,7 @@ export function renderPortalHtml({ returnTo = '' } = {}) {
   <div class="wrap">
     <h2>dashdesign Login</h2>
     <div class="card">
-      <p class="muted">Melde dich mit deinem dashdesign Account an.</p>
+      <p class="muted">Melde dich mit deinem dashdesign; Account an.</p>
       <form id="f">
         <label>Benutzername oder E-Mail</label><br/>
         <input required type="text" id="u" name="username" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false"/><br/><br/>
