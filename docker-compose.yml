@@ -35,6 +35,8 @@ services:
       - OTP_TTL_MINUTES=${OTP_TTL_MINUTES:-10}
       - REDIRECT_TOKEN_TTL_SECONDS=${REDIRECT_TOKEN_TTL_SECONDS:-120}
       - REDIRECT_ALLOWED_ORIGINS=${REDIRECT_ALLOWED_ORIGINS:-https://laraleyla-monitor.diestadt.app,https://laraleyla-monitor.pages.dev}
+      - ALLOW_INSECURE_REDIRECTS=${ALLOW_INSECURE_REDIRECTS:-false}
+      - TRUST_PROXY=${TRUST_PROXY:-1}
       - CORS_ALLOWLIST=${CORS_ALLOWLIST:-https://login-service.dashdesign.eu}
       - MONITOR_VIEWER_EMAILS=${MONITOR_VIEWER_EMAILS:-}
       - MONITOR_EDITOR_EMAILS=${MONITOR_EDITOR_EMAILS:-}

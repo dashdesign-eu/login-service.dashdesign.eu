@@ -97,20 +97,25 @@ export function createAuthRouter() {
   });
 
   router.post('/auth/login', authLimiter, async (req, res) => {
-    const identifier = resolveIdentifier(req.body);
-    const password = String(req.body?.password || '').trim();
-    if (!identifier || !password) return res.status(400).json({ ok: false, error: 'invalid_input' });
+    try {
+      const identifier = resolveIdentifier(req.body);
+      const password = String(req.body?.password || '').trim();
+      if (!identifier || !password) return res.status(400).json({ ok: false, error: 'invalid_input' });
 
-    const result = await performPasswordLogin(identifier, password);
-    if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
+      const result = await performPasswordLogin(identifier, password);
+      if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
 
-    await audit(req, 'login_success', result.user.id, {});
-    return res.json({
-      ok: true,
-      token: `Bearer ${result.accessToken}`,
-      refreshToken: result.refreshToken,
-      payload: { ...result.user, roles: result.roles },
-    });
+      await audit(req, 'login_success', result.user.id, {});
+      return res.json({
+        ok: true,
+        token: `Bearer ${result.accessToken}`,
+        refreshToken: result.refreshToken,
+        payload: { ...result.user, roles: result.roles },
+      });
+    } catch (err) {
+      console.error('[auth/login] failed', err);
+      return res.status(503).json({ ok: false, error: 'auth_service_unavailable' });
+    }
   });
 
   router.post('/internal/register', authLimiter, async (req, res) => {
@@ -139,21 +144,26 @@ export function createAuthRouter() {
   });
 
   router.post('/auth/redirect/complete', authLimiter, async (req, res) => {
-    const identifier = resolveIdentifier(req.body);
-    const password = String(req.body?.password || '').trim();
-    const returnTo = req.body?.returnTo || req.body?.return_to || req.body?.next;
-    const safe = safeReturnTo(returnTo);
-    if (!identifier || !password || !safe) return res.status(400).json({ ok: false, error: 'invalid_input' });
+    try {
+      const identifier = resolveIdentifier(req.body);
+      const password = String(req.body?.password || '').trim();
+      const returnTo = req.body?.returnTo || req.body?.return_to || req.body?.next;
+      const safe = safeReturnTo(returnTo);
+      if (!identifier || !password || !safe) return res.status(400).json({ ok: false, error: 'invalid_input' });
 
-    const result = await performPasswordLogin(identifier, password);
-    if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
+      const result = await performPasswordLogin(identifier, password);
+      if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
 
-    const callbackToken = await issueRedirectCallbackToken(result.user.id, safe);
-    const redirectUrl = new URL(toAbsoluteReturnUrl(safe));
-    redirectUrl.searchParams.set('callbackToken', callbackToken);
+      const callbackToken = await issueRedirectCallbackToken(result.user.id, safe);
+      const redirectUrl = new URL(toAbsoluteReturnUrl(safe));
+      redirectUrl.searchParams.set('callbackToken', callbackToken);
 
-    await audit(req, 'redirect_login_success', result.user.id, { returnTo: safe });
-    return res.json({ ok: true, redirectTo: redirectUrl.toString() });
+      await audit(req, 'redirect_login_success', result.user.id, { returnTo: safe });
+      return res.json({ ok: true, redirectTo: redirectUrl.toString() });
+    } catch (err) {
+      console.error('[auth/redirect/complete] failed', err);
+      return res.status(503).json({ ok: false, error: 'auth_service_unavailable' });
+    }
   });
 
   router.post('/auth/redirect/session', authLimiter, async (req, res) => {

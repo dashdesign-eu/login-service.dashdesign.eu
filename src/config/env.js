@@ -11,6 +11,16 @@ const parseBoolean = (value, fallback = false) => {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 };
 
+const parseTrustProxy = (value) => {
+  if (value === undefined || value === null || value === '') return 1;
+  const raw = String(value).trim().toLowerCase();
+  if (['true', 'yes', 'on'].includes(raw)) return true;
+  if (['false', 'no', 'off'].includes(raw)) return false;
+  const n = Number(raw);
+  if (Number.isFinite(n)) return n;
+  return String(value).trim();
+};
+
 const splitList = (value = '') =>
   String(value)
     .split(',')
@@ -48,6 +58,7 @@ export const config = Object.freeze({
   APPLE_PRIVATE_KEY_PATH: process.env.APPLE_PRIVATE_KEY_PATH || './secrets/AuthKey.p8',
   APPLE_REDIRECT_URI: process.env.APPLE_REDIRECT_URI || '',
   ALLOW_INSECURE_REDIRECTS: parseBoolean(process.env.ALLOW_INSECURE_REDIRECTS, false),
+  TRUST_PROXY: parseTrustProxy(process.env.TRUST_PROXY),
   GOOGLE_CONFIGURED: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
   APPLE_CONFIGURED: !!(process.env.APPLE_TEAM_ID && process.env.APPLE_CLIENT_ID && process.env.APPLE_KEY_ID),
 });
@@ -81,4 +92,5 @@ export const {
   REDIRECT_ALLOWED_ORIGINS,
   REDIRECT_TOKEN_TTL_SECONDS,
   REFRESH_TTL_SECONDS,
+  TRUST_PROXY,
 } = config;

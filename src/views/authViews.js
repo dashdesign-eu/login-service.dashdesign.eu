@@ -1,8 +1,28 @@
+function escapeHtmlAttr(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function renderLegalFooter() {
+  return `
+    <footer class="legal">
+      <a href="https://dashdesign.eu/impressum/" target="_blank" rel="noopener noreferrer">Impressum</a>
+      <span>·</span>
+      <a href="https://hessenapp.de/datenschutz" target="_blank" rel="noopener noreferrer">Datenschutz</a>
+      <p>Hessen App GmbH © 2026 - Alle Rechte vorbehalten.</p>
+    </footer>
+  `;
+}
+
 export function renderPortalHtml({ returnTo = '' } = {}) {
-  const escaped = JSON.stringify(returnTo || '');
+  const safeReturnTo = escapeHtmlAttr(returnTo || '');
   const helperText = returnTo
-    ? 'Dein Login wird direkt in die Ziel-App zurückgeleitet.'
-    : 'Bitte melde dich mit deinem dashdesign; Account an.';
+    ? 'Nach erfolgreicher Anmeldung wirst du automatisch in die Ziel-App zurueckgeleitet.'
+    : 'Melde dich mit deinem Account an, um mit deinem Profil weiterzuarbeiten.';
 
   return `<!doctype html>
 <html lang="de">
@@ -10,183 +30,159 @@ export function renderPortalHtml({ returnTo = '' } = {}) {
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>dashdesign Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
   <style>
     *{box-sizing:border-box}
-    body{font-family:Inter,system-ui,Arial,sans-serif;background:#0f1116;color:#fff;margin:0}
-    .wrap{max-width:460px;margin:40px auto;padding:24px}
-    .card{background:#171a22;border:1px solid #2a2f3d;border-radius:12px;padding:20px}
-    input,button{width:100%;padding:12px;border-radius:10px;border:1px solid #363d50;background:#0f1116;color:#fff}
-    button{cursor:pointer;background:#6d5efc;border:none;margin-top:10px}
-    .ghost{background:#222839}
-    .muted{color:#aab0c0;font-size:13px}
-    .err{background:#431f24;border:1px solid #6d2d36;padding:10px;border-radius:8px;margin:10px 0}
-    .status{margin-top:10px;padding:12px;border-radius:10px}
-    .status-ok{border:1px solid #2b6f5a;background:#113d2e}
-    .status-bad{border:1px solid #6d2d36;background:#3d1a23}
+    :root{
+      --bg:#080a0f;
+      --panel:#121624;
+      --panel-edge:#27304a;
+      --text:#e9edf8;
+      --muted:#9ca7c2;
+      --ok-bg:#113d2e;
+      --ok-border:#2b6f5a;
+      --bad-bg:#3d1a23;
+      --bad-border:#6d2d36;
+      --accent:#4d7cff;
+      --accent-2:#45d3b6;
+    }
+    body{
+      margin:0;
+      min-height:100vh;
+      color:var(--text);
+      font-family:Manrope,system-ui,sans-serif;
+      background:
+        radial-gradient(70% 70% at 0% 0%, rgba(77,124,255,.22), transparent 65%),
+        radial-gradient(60% 60% at 100% 100%, rgba(69,211,182,.18), transparent 60%),
+        var(--bg);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+    }
+    .wrap{width:min(100%,520px)}
+    .card{
+      background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01));
+      border:1px solid var(--panel-edge);
+      border-radius:18px;
+      padding:24px;
+      box-shadow:0 28px 60px rgba(0,0,0,.4);
+      backdrop-filter:blur(8px);
+    }
+    h1{margin:0 0 4px;font-size:28px;line-height:1.1;font-weight:800}
+    .subtitle{margin:0 0 20px;color:var(--muted)}
+    .helper{
+      margin:10px 0 16px;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.4;
+    }
+    form{display:grid;gap:14px}
+    label{font-weight:700;font-size:14px}
+    input,button{
+      width:100%;
+      border-radius:12px;
+      padding:13px 14px;
+      font:600 15px/1.2 Manrope,system-ui,sans-serif;
+    }
+    input{
+      border:1px solid #36415e;
+      background:#0c1020;
+      color:var(--text);
+      transition:border-color .2s, box-shadow .2s;
+    }
+    input:focus{
+      outline:none;
+      border-color:var(--accent);
+      box-shadow:0 0 0 4px rgba(77,124,255,.2);
+    }
+    button{
+      border:none;
+      background:linear-gradient(135deg,var(--accent),#5570ff 55%,#6a66ff);
+      color:#fff;
+      cursor:pointer;
+      font-weight:800;
+      letter-spacing:.01em;
+    }
+    button[disabled]{opacity:.7;cursor:wait}
     .row{display:flex;gap:10px}
-    .row > *{flex:1}
-    a{color:#9bb3ff}
+    .ghost{
+      background:#202841;
+      border:1px solid #324067;
+      font-weight:700;
+    }
+    .err{
+      background:var(--bad-bg);
+      border:1px solid var(--bad-border);
+      padding:12px;
+      border-radius:10px;
+      font-size:14px;
+      line-height:1.35;
+    }
+    .status{
+      display:none;
+      margin-top:4px;
+      padding:11px 12px;
+      border-radius:10px;
+      font-size:14px;
+    }
+    .status-ok{border:1px solid var(--ok-border);background:var(--ok-bg)}
+    .status-bad{border:1px solid var(--bad-border);background:var(--bad-bg)}
+    .legal{
+      margin-top:18px;
+      color:var(--muted);
+      font-size:12px;
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:8px;
+    }
+    .legal p{
+      margin:6px 0 0;
+      width:100%;
+      font-family:"JetBrains Mono",ui-monospace,monospace;
+      font-size:11px;
+      color:#90a0c8;
+    }
+    .legal a{color:#afc2ff;text-decoration:none}
+    .legal a:hover{text-decoration:underline}
+    @media (max-width:520px){
+      .card{padding:18px}
+      h1{font-size:24px}
+      .row{flex-direction:column}
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h2>dashdesign Login</h2>
-    <div class="card">
-      <p class="muted">Melde dich mit deinem dashdesign; Account an.</p>
+  <main class="wrap">
+    <section class="card" id="login-app" data-return-to="${safeReturnTo}">
+      <h1>dashdesign Login</h1>
+      <p class="subtitle">Sicher anmelden und direkt weiterarbeiten.</p>
+      <p class="helper">${helperText}</p>
+
       <form id="f" autocomplete="on" method="post" action="/auth/login">
-        <label>Benutzername</label><br/>
-        <input required type="text" id="u" name="username" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false"/><br/><br/>
-        <label>Passwort</label><br/>
-        <input required type="password" id="p" name="password" autocomplete="current-password"/>
+        <div>
+          <label for="u">Benutzername</label>
+          <input required type="text" id="u" name="username" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false"/>
+        </div>
+        <div>
+          <label for="p">Passwort</label>
+          <input required type="password" id="p" name="password" autocomplete="current-password"/>
+        </div>
         <div id="err"></div>
-        <button type="submit">Anmelden</button>
-        <div id="status" class="status" style="display:none"></div>
+        <button id="submit" type="submit">Anmelden</button>
+        <div id="status" class="status"></div>
         <div class="row">
           <button class="ghost" id="g" type="button">Google</button>
           <button class="ghost" id="a" type="button">Apple</button>
         </div>
       </form>
-      <p class="muted" style="margin-top:10px">${helperText}</p>
-    </div>
-  </div>
-<script>
-const returnTo = ${escaped};
-const err = (m='') => {
-  const el = document.getElementById('err');
-  if (!el) return;
-  el.innerHTML = m ? '<div class="err">'+m+'</div>' : '';
-};
-const statusEl = document.getElementById('status');
-
-const setStatus = (text, ok = false) => {
-  if (!statusEl) return;
-  statusEl.textContent = text;
-  statusEl.className = 'status ' + (ok ? 'status-ok' : 'status-bad');
-  statusEl.style.display = '';
-};
-
-const ERROR_TEXT = {
-  invalid_credentials: 'Falsche Zugangsdaten.',
-  password_not_set: 'Für dieses Konto ist kein Passwort gesetzt.',
-  invalid_input: 'Bitte Benutzername und Passwort angeben.',
-};
-
-const isInternalReturnTo = (url = '') => typeof url === 'string' && url.startsWith('/');
-
-const checkSignedIn = async () => {
-  const t = localStorage.getItem('dashdesign_access_token') || '';
-  if (!t) return false;
-  try {
-    const res = await fetch('/auth/me', { headers: { authorization: 'Bearer ' + t } });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.ok) {
-      if (res.status === 401) localStorage.removeItem('dashdesign_access_token');
-      return false;
-    }
-    const email = data?.user?.email || 'unbekannt';
-    const roles = (data?.user?.roles || []).join(', ') || 'keine';
-    setStatus('Angemeldet als ' + email + ' (' + roles + ').', true);
-    return data;
-  } catch {
-    return false;
-  }
-};
-
-const continueWithSession = async () => {
-  const token = localStorage.getItem('dashdesign_access_token') || '';
-  if (!token || !returnTo) return false;
-  if (isInternalReturnTo(returnTo)) {
-    location.replace(returnTo);
-    return true;
-  }
-  try {
-    const res = await fetch('/auth/redirect/session', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
-      body: JSON.stringify({ returnTo }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.ok || !data?.redirectTo) {
-      if (res.status === 401) localStorage.removeItem('dashdesign_access_token');
-      return false;
-    }
-    location.replace(data.redirectTo);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const bootstrapSession = async () => {
-  const data = await checkSignedIn();
-  if (!data) return;
-  if (returnTo) {
-    const ok = await continueWithSession();
-    if (ok) return;
-    setStatus('Login-Weiterleitung ist nicht möglich. Bitte erneut anmelden.', false);
-    return;
-  }
-  setStatus('Du bist bereits angemeldet. Weiterleitung zum Profil...', true);
-  location.replace('/account');
-};
-
-const params = new URLSearchParams(window.location.search);
-if (params.get('username') || params.get('password')) {
-  const pre = params.get('username');
-  const input = document.getElementById('u');
-  if (input) input.value = pre;
-  params.delete('username');
-  params.delete('password');
-  const nextUrl = params.toString();
-  const cleanUrl = nextUrl ? '/login?' + nextUrl : '/login';
-  if (window.history?.replaceState) {
-    window.history.replaceState({}, '', cleanUrl);
-  }
-}
-
-if (localStorage.getItem('dashdesign_access_token')) {
-  bootstrapSession();
-}
-
-document.getElementById('g').onclick = () => {
-  const q = returnTo ? ('?returnTo=' + encodeURIComponent(returnTo)) : '';
-  location.href = '/auth/google/start' + q;
-};
-
-document.getElementById('a').onclick = () => {
-  const q = returnTo ? ('?returnTo=' + encodeURIComponent(returnTo)) : '';
-  location.href = '/auth/apple/start' + q;
-};
-
-document.getElementById('f').onsubmit = async (e) => {
-  e.preventDefault();
-  err('');
-  const username = document.getElementById('u').value.trim();
-  const password = document.getElementById('p').value;
-  const endpoint = returnTo && !isInternalReturnTo(returnTo) ? '/auth/redirect/complete' : '/auth/login';
-  const body = returnTo && !isInternalReturnTo(returnTo) ? { username, password, returnTo } : { username, password };
-  const res = await fetch(endpoint, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) {
-    if (res.status === 401) localStorage.removeItem('dashdesign_access_token');
-    return err(ERROR_TEXT[data?.error] || data?.error || 'Anmeldung fehlgeschlagen.');
-  }
-
-  if (returnTo) {
-    if (isInternalReturnTo(returnTo)) {
-      if (token) localStorage.setItem('dashdesign_access_token', token);
-      location.replace(returnTo);
-    } else {
-      location.replace(data.redirectTo);
-    }
-    return;
-  }
-
-  const token = String(data.token || '').replace(/^Bearer\s+/i, '');
-  if (token) localStorage.setItem('dashdesign_access_token', token);
-  location.replace('/account');
-};
-</script>
+      ${renderLegalFooter()}
+    </section>
+  </main>
+  <script defer src="/static/login.js"></script>
 </body>
 </html>`;
 }
@@ -198,151 +194,173 @@ export function renderAccountHtml() {
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>dashdesign Account</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
   <style>
-    body{font-family:Inter,system-ui,Arial,sans-serif;background:#0f1116;color:#fff;margin:0}
-    .wrap{max-width:760px;margin:40px auto;padding:24px}
-    .card{background:#171a22;border:1px solid #2a2f3d;border-radius:12px;padding:20px}
-    .muted{color:#aab0c0}
-    label{display:block;margin-top:12px;margin-bottom:6px}
-    input{width:100%;padding:10px;border-radius:8px;border:1px solid #363d50;background:#0f1116;color:#fff}
-    button{padding:10px 14px;border-radius:8px;border:none;background:#6d5efc;color:#fff;cursor:pointer}
-    .ghost{background:#2f3650}
-    .status{margin-top:10px;padding:12px;border-radius:10px}
-    .status-ok{border:1px solid #2b6f5a;background:#113d2e}
-    .status-bad{border:1px solid #6d2d36;background:#3d1a23}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    *{box-sizing:border-box}
+    :root{
+      --bg:#080a0f;
+      --panel:#121624;
+      --panel-edge:#27304a;
+      --text:#e9edf8;
+      --muted:#9ca7c2;
+      --ok-bg:#113d2e;
+      --ok-border:#2b6f5a;
+      --bad-bg:#3d1a23;
+      --bad-border:#6d2d36;
+      --accent:#4d7cff;
+    }
+    body{
+      margin:0;
+      min-height:100vh;
+      color:var(--text);
+      font-family:Manrope,system-ui,sans-serif;
+      background:
+        radial-gradient(65% 65% at 0% 0%, rgba(77,124,255,.22), transparent 60%),
+        radial-gradient(55% 55% at 100% 100%, rgba(69,211,182,.16), transparent 60%),
+        var(--bg);
+      padding:24px;
+    }
+    .wrap{max-width:920px;margin:0 auto}
+    .card{
+      background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01));
+      border:1px solid var(--panel-edge);
+      border-radius:18px;
+      padding:24px;
+      box-shadow:0 28px 60px rgba(0,0,0,.4);
+      backdrop-filter:blur(8px);
+    }
+    h1{margin:0 0 4px;font-size:30px;line-height:1.1;font-weight:800}
+    .subtitle{margin:0 0 18px;color:var(--muted)}
+    .status{
+      display:none;
+      margin-bottom:12px;
+      padding:11px 12px;
+      border-radius:10px;
+      font-size:14px;
+    }
+    .status-ok{border:1px solid var(--ok-border);background:var(--ok-bg)}
+    .status-bad{border:1px solid var(--bad-border);background:var(--bad-bg)}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .grid-1{grid-column:1/-1}
-    pre{white-space:pre-wrap;background:#0f1116;border:1px solid #2a2f3d;padding:12px;border-radius:8px}
-    .actions{margin-top:14px;display:flex;gap:12px;flex-wrap:wrap}
+    .panel{
+      border:1px solid #2f3a59;
+      background:#0e1324;
+      border-radius:12px;
+      padding:12px;
+    }
+    label{
+      display:block;
+      margin:0 0 6px;
+      color:var(--muted);
+      font-size:13px;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+    pre{
+      margin:0;
+      white-space:pre-wrap;
+      font:600 14px/1.45 "JetBrains Mono",ui-monospace,monospace;
+      color:#d9e4ff;
+      word-break:break-word;
+    }
+    input{
+      width:100%;
+      border-radius:10px;
+      padding:11px 12px;
+      border:1px solid #36415e;
+      background:#0c1020;
+      color:var(--text);
+      font:600 15px/1.2 Manrope,system-ui,sans-serif;
+    }
+    input:focus{
+      outline:none;
+      border-color:var(--accent);
+      box-shadow:0 0 0 4px rgba(77,124,255,.2);
+    }
+    .actions{
+      margin-top:16px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+    button{
+      border:none;
+      border-radius:10px;
+      padding:11px 14px;
+      color:#fff;
+      background:linear-gradient(135deg,var(--accent),#5b73ff);
+      cursor:pointer;
+      font:800 14px/1 Manrope,system-ui,sans-serif;
+    }
+    button.ghost{
+      background:#202841;
+      border:1px solid #324067;
+      font-weight:700;
+    }
+    .legal{
+      margin-top:18px;
+      color:var(--muted);
+      font-size:12px;
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:8px;
+    }
+    .legal p{
+      margin:6px 0 0;
+      width:100%;
+      font-family:"JetBrains Mono",ui-monospace,monospace;
+      font-size:11px;
+      color:#90a0c8;
+    }
+    .legal a{color:#afc2ff;text-decoration:none}
+    .legal a:hover{text-decoration:underline}
+    @media (max-width:720px){
+      .grid{grid-template-columns:1fr}
+      h1{font-size:25px}
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h2>Account</h2>
-    <div class="card">
-      <h3>Profil</h3>
-      <div id="status" class="status" style="display:none"></div>
-      <div id="out">Lade…</div>
+  <main class="wrap">
+    <section class="card" id="account-app">
+      <h1>Mein Account</h1>
+      <p class="subtitle">Persoenliche Daten, Rollen und Sicherheitsstatus.</p>
+      <div id="status" class="status"></div>
 
-      <h4>Kontodaten</h4>
       <div class="grid">
-        <div><label>Benutzername / E-Mail</label><pre id="email">-</pre></div>
-        <div><label>Provider</label><pre id="provider">-</pre></div>
-        <div><label>Rolle</label><pre id="role">-</pre></div>
-        <div><label>Admin</label><pre id="admin">-</pre></div>
-        <div class="grid-1"><label>Registriert am</label><pre id="created">-</pre></div>
-        <div class="grid-1"><label>Passwort zuletzt geändert</label><pre id="passwordChanged">-</pre></div>
+        <div class="panel"><label>Benutzername / E-Mail</label><pre id="email">-</pre></div>
+        <div class="panel"><label>Provider</label><pre id="provider">-</pre></div>
+        <div class="panel"><label>Rollen</label><pre id="role">-</pre></div>
+        <div class="panel"><label>Admin</label><pre id="admin">-</pre></div>
+        <div class="panel grid-1"><label>Registriert am</label><pre id="created">-</pre></div>
+        <div class="panel grid-1"><label>Passwort zuletzt geaendert</label><pre id="passwordChanged">-</pre></div>
       </div>
 
-      <h4>Persönliche Daten</h4>
-      <div class="grid">
-        <div><label for="first">Vorname</label><input id="first"/></div>
-        <div><label for="last">Nachname</label><input id="last"/></div>
-        <div class="grid-1">
-          <button id="saveNames">Vor- / Nachname speichern</button>
+      <div style="margin-top:18px" class="grid">
+        <div class="panel">
+          <label for="first">Vorname</label>
+          <input id="first" autocomplete="given-name"/>
+        </div>
+        <div class="panel">
+          <label for="last">Nachname</label>
+          <input id="last" autocomplete="family-name"/>
         </div>
       </div>
 
       <div class="actions">
-        <button id="logout" class="ghost">Abmelden</button>
+        <button id="saveNames">Vor- und Nachname speichern</button>
         <button id="refresh" class="ghost">Aktualisieren</button>
+        <button id="logout" class="ghost">Abmelden</button>
       </div>
-    </div>
-  </div>
-<script>
-const setStatus = (text, ok = false) => {
-  const s = document.getElementById('status');
-  if (!s) return;
-  s.textContent = text;
-  s.className = 'status ' + (ok ? 'status-ok' : 'status-bad');
-  s.style.display = '';
-};
 
-const toDateTime = (v) => {
-  if (!v) return '-';
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleString('de-DE', {
-    year: '2-digit',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-};
-
-const setValue = (id, value) => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = value == null ? '-' : String(value);
-};
-
-const fill = (profile) => {
-  setValue('email', profile?.email || '-');
-  setValue('provider', profile?.provider || '-');
-  setValue('role', Array.isArray(profile?.roles) ? profile.roles.join(', ') : 'keine');
-  setValue('admin', profile?.isAdmin ? 'Ja' : 'Nein');
-  setValue('created', toDateTime(profile?.createdAt));
-  setValue('passwordChanged', toDateTime(profile?.lastPasswordChangedAt));
-  const firstEl = document.getElementById('first');
-  const lastEl = document.getElementById('last');
-  if (firstEl) firstEl.value = profile?.firstName || '';
-  if (lastEl) lastEl.value = profile?.lastName || '';
-  const out = document.getElementById('out');
-  if (out) out.textContent = profile ? JSON.stringify(profile, null, 2) : 'Keine Profildaten verfügbar.';
-};
-
-const load = async () => {
-  const token = localStorage.getItem('dashdesign_access_token') || '';
-  if (!token) {
-    localStorage.removeItem('dashdesign_access_token');
-    const returnTo = encodeURIComponent(location.pathname + location.search);
-    location.replace('/login?returnTo=' + returnTo);
-    return;
-  }
-
-  const res = await fetch('/auth/me', { headers: { authorization: 'Bearer ' + token } });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) {
-    localStorage.removeItem('dashdesign_access_token');
-    setStatus('Session nicht gültig. Weiterleitung zum Login…', false);
-    const returnTo = encodeURIComponent(location.pathname + location.search);
-    location.replace('/login?returnTo=' + returnTo);
-    return;
-  }
-
-  fill(data.user || {});
-  setStatus('Profil geladen.', true);
-};
-
-const saveNames = async () => {
-  const token = localStorage.getItem('dashdesign_access_token') || '';
-  const firstName = String(document.getElementById('first').value || '').trim();
-  const lastName = String(document.getElementById('last').value || '').trim();
-  const res = await fetch('/auth/profile', {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
-    body: JSON.stringify({ firstName, lastName }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) {
-    setStatus(data?.error || 'Änderung nicht gespeichert.', false);
-    return;
-  }
-  fill(data.profile || {});
-  setStatus('Gespeichert.', true);
-};
-
-document.getElementById('saveNames').onclick = saveNames;
-document.getElementById('refresh').onclick = load;
-document.getElementById('logout').onclick = () => {
-  localStorage.removeItem('dashdesign_access_token');
-  location.replace('/login');
-};
-
-load();
-</script>
+      ${renderLegalFooter()}
+    </section>
+  </main>
+  <script defer src="/static/account.js"></script>
 </body>
 </html>`;
 }

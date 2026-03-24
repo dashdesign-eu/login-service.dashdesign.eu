@@ -73,6 +73,8 @@ POSTGRES_PASSWORD=<strong-random-password>
 JWT_ACCESS_SECRET=<strong-random-secret>
 JWT_REFRESH_SECRET=<strong-random-secret>
 REDIRECT_ALLOWED_ORIGINS=https://laraleyla-monitor.diestadt.app,https://laraleyla-monitor.pages.dev
+ALLOW_INSECURE_REDIRECTS=false
+TRUST_PROXY=1
 CORS_ALLOWLIST=https://login-service.dashdesign.eu
 MONITOR_VIEWER_EMAILS=
 MONITOR_EDITOR_EMAILS=
@@ -93,3 +95,7 @@ Coolify note:
 - Postgres stays private inside the compose network
 
 If Google/Apple auth is not needed immediately, those provider envs can stay empty; email/redirect flow will still work.
+
+## CSP note (important)
+The login and account pages use external scripts from `/static/*.js` to stay compatible with Helmet's default CSP (`script-src 'self'`).
+If you reintroduce inline `<script>`, the browser will block it unless you configure nonces/hashes or `unsafe-inline`.
