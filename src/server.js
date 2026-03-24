@@ -18,6 +18,15 @@ const REFRESH_TTL_SECONDS = Number(process.env.REFRESH_TTL_SECONDS || 2592000);
 const OTP_TTL_MINUTES = Number(process.env.OTP_TTL_MINUTES || 10);
 const REDIRECT_TOKEN_TTL_SECONDS = Number(process.env.REDIRECT_TOKEN_TTL_SECONDS || 120);
 const REDIRECT_ALLOWED_ORIGINS = String(process.env.REDIRECT_ALLOWED_ORIGINS || '').split(',').map((x) => x.trim()).filter(Boolean);
+const HIDDEN_REGISTRATION_SECRET = process.env.HIDDEN_REGISTRATION_SECRET || '';
+const BOOTSTRAP_ADMIN_PREFIX = process.env.BOOTSTRAP_ADMIN_PREFIX || 'admin-';
+const BOOTSTRAP_ADMIN_NAME_LENGTH = Number.isFinite(Number(process.env.BOOTSTRAP_ADMIN_NAME_LENGTH || 8))
+  ? Number(process.env.BOOTSTRAP_ADMIN_NAME_LENGTH || 8)
+  : 8;
+const BOOTSTRAP_ADMIN_PASSWORD_LENGTH = Number.isFinite(Number(process.env.BOOTSTRAP_ADMIN_PASSWORD_LENGTH || 16))
+  ? Number(process.env.BOOTSTRAP_ADMIN_PASSWORD_LENGTH || 16)
+  : 16;
+const BOOTSTRAP_ADMIN_PROVIDER = 'bootstrap_admin';
 
 const allowlist = (process.env.CORS_ALLOWLIST || APP_BASE_URL)
   .split(',')
@@ -55,9 +64,21 @@ const MONITOR_ADMIN_EMAILS = parseRoleList('MONITOR_ADMIN_EMAILS');
 const MONITOR_EDITOR_EMAILS = parseRoleList('MONITOR_EDITOR_EMAILS');
 const MONITOR_VIEWER_EMAILS = parseRoleList('MONITOR_VIEWER_EMAILS');
 
-function resolveRoles(email) {
+function randomAlphaNumeric(length, charset = 'abcdefghijklmnopqrstuvwxyz0123456789') {
+  const chars = charset;
+  const size = chars.length;
+  let out = '';
+  const random = crypto.randomBytes(length);
+  for (let i = 0; i < length; i += 1) {
+    out += chars[random[i] % size];
+  }
+  return out;
+}
+
+function resolveRoles(email, provider = '') {
   const normalized = String(email || '').toLowerCase().trim();
   const roles = new Set();
+  if (provider === BOOTSTRAP_ADMIN_PROVIDER) roles.add('admin');
   if (MONITOR_VIEWER_EMAILS.includes(normalized)) roles.add('monitor_viewer');
   if (MONITOR_EDITOR_EMAILS.includes(normalized)) roles.add('monitor_editor');
   if (MONITOR_ADMIN_EMAILS.includes(normalized)) roles.add('admin');
@@ -85,7 +106,7 @@ function sha256(input) {
 }
 
 function issueTokens(user) {
-  const roles = resolveRoles(user.email);
+  const roles = resolveRoles(user.email, user.provider);
   const accessToken = jwt.sign({ sub: user.id, email: user.email, provider: user.provider, roles }, JWT_ACCESS_SECRET, {
     expiresIn: ACCESS_TTL_SECONDS,
     issuer: 'dashdesign-login-service',
@@ -98,7 +119,57 @@ function issueTokens(user) {
     audience: 'dashdesign-apps',
   });
 
-  return { accessToken, refreshToken, roles: resolveRoles(user.email) };
+  return { accessToken, refreshToken, roles: resolveRoles(user.email, user.provider) };
+}
+
+async function upsertEmailUser({ email, password, provider = 'email' }) {
+  const normalized = String(email || '').toLowerCase().trim();
+  if (!normalized || !password || password.length < 8) {
+    throw new Error('invalid_input');
+  }
+
+  const userId = `email:${normalized}`;
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  await pool.query(
+    `INSERT INTO users (id, email, provider, last_login_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (id) DO UPDATE
+     SET email = EXCLUDED.email,
+         provider = CASE WHEN users.provider = 'bootstrap_admin' THEN users.provider ELSE EXCLUDED.provider END,
+         last_login_at = NOW()`,
+    [userId, normalized, provider]
+  );
+
+  await pool.query(
+    `INSERT INTO auth_credentials (user_id, password_hash, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = NOW()`,
+    [userId, passwordHash]
+  );
+
+  return { id: userId, email: normalized, provider };
+}
+
+async function ensureBootstrapAdmin() {
+  const users = await pool.query('SELECT COUNT(*)::int AS count FROM users');
+  if (Number(users.rows[0]?.count || 0) > 0) {
+    console.log('[bootstrap-admin] users exist, skipping initial admin seeding');
+    return;
+  }
+
+  const suffix = randomAlphaNumeric(Math.max(1, BOOTSTRAP_ADMIN_NAME_LENGTH), 'abcdefghijklmnopqrstuvwxyz0123456789');
+  const email = `${BOOTSTRAP_ADMIN_PREFIX}${suffix}`;
+  const password = randomAlphaNumeric(Math.max(12, BOOTSTRAP_ADMIN_PASSWORD_LENGTH), 'abcdefghijkmnpqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789!@#$%&*');
+
+  const user = await upsertEmailUser({ email, password, provider: BOOTSTRAP_ADMIN_PROVIDER });
+  await pool.query(
+    'INSERT INTO audit_logs (user_id, action, ip, user_agent, metadata) VALUES ($1, $2, $3, $4, $5::jsonb)',
+    [user.id, 'bootstrap_admin_created', null, null, JSON.stringify({ email: user.email, provider: user.provider })]
+  );
+
+  console.log('[bootstrap-admin] Created initial admin user.');
+  console.log(`[bootstrap-admin] ${email} PW: ${password}`);
 }
 
 async function saveRefreshToken(userId, refreshToken) {
@@ -349,29 +420,13 @@ app.post('/auth/email/register/verify', authLimiter, async (req, res) => {
   const valid = await bcrypt.compare(String(code), otp.code_hash);
   if (!valid) return res.status(400).json({ ok: false, error: 'otp_invalid' });
 
-  const userId = `email:${normalized}`;
-  const passwordHash = await bcrypt.hash(password, 12);
-
-  await pool.query(
-    `INSERT INTO users (id, email, provider, last_login_at)
-     VALUES ($1, $2, 'email', NOW())
-     ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, last_login_at = NOW()`,
-    [userId, normalized]
-  );
-
-  await pool.query(
-    `INSERT INTO auth_credentials (user_id, password_hash, updated_at)
-     VALUES ($1, $2, NOW())
-     ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = NOW()`,
-    [userId, passwordHash]
-  );
+  const user = await upsertEmailUser({ email: normalized, password, provider: 'email' });
 
   await pool.query('UPDATE email_otp_codes SET consumed_at = NOW() WHERE id = $1', [otp.id]);
 
-  const user = { id: userId, email: normalized, provider: 'email' };
   const { accessToken, refreshToken, roles } = issueTokens(user);
-  await saveRefreshToken(userId, refreshToken);
-  await audit(req, 'register_success', userId, { email: normalized });
+  await saveRefreshToken(user.id, refreshToken);
+  await audit(req, 'register_success', user.id, { email: normalized });
 
   return res.json({ ok: true, token: `Bearer ${accessToken}`, refreshToken, payload: { ...user, roles } });
 });
@@ -385,6 +440,24 @@ app.post('/auth/login', authLimiter, async (req, res) => {
 
   await audit(req, 'login_success', result.user.id, {});
   return res.json({ ok: true, token: `Bearer ${result.accessToken}`, refreshToken: result.refreshToken, payload: { ...result.user, roles: result.roles } });
+});
+
+app.post('/internal/register', authLimiter, async (req, res) => {
+  const token = req.get('x-bootstrap-token') || req.query?.token || '';
+  const { email, password, admin } = req.body || {};
+  if (!HIDDEN_REGISTRATION_SECRET) {
+    return res.status(404).json({ ok: false, error: 'route_not_available' });
+  }
+  if (token !== HIDDEN_REGISTRATION_SECRET) {
+    return res.status(404).json({ ok: false, error: 'route_not_found' });
+  }
+  if (!email || !password) return res.status(400).json({ ok: false, error: 'invalid_input' });
+  if (String(password).length < 8) return res.status(400).json({ ok: false, error: 'password_too_short' });
+
+  const provider = admin ? BOOTSTRAP_ADMIN_PROVIDER : 'email';
+  const user = await upsertEmailUser({ email, password, provider });
+  await audit(req, 'internal_register', user.id, { email: user.email, provider: user.provider });
+  return res.json({ ok: true, user: { id: user.id, email: user.email, provider: user.provider } });
 });
 
 app.get('/auth/redirect/start', (req, res) => {
@@ -499,7 +572,7 @@ app.get('/auth/me', authLimiter, async (req, res) => {
   const userQ = await pool.query('SELECT id, email, provider FROM users WHERE id = $1', [claims.sub]);
   if (userQ.rowCount === 0) return res.status(404).json({ ok: false, error: 'user_not_found' });
   const user = userQ.rows[0];
-  const roles = resolveRoles(user.email);
+  const roles = resolveRoles(user.email, user.provider);
   return res.json({ ok: true, user: { id: user.id, email: user.email, provider: user.provider, roles }, claims: { ...claims, roles } });
 });
 
@@ -550,6 +623,7 @@ app.post('/analytics/event', authLimiter, async (req, res) => {
 
 async function start() {
   await initDb();
+  await ensureBootstrapAdmin();
   app.listen(PORT, () => {
     console.log(`login-service listening on ${APP_BASE_URL} (port ${PORT})`);
   });
