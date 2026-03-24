@@ -2,9 +2,23 @@
 
 Central auth service for **dashdesign**.
 
+## What this service is responsible for
+
+- authenticating dashdesign users
+- issuing access and refresh tokens
+- handling reusable redirect-login flows for external products
+- validating allowed redirect targets via `REDIRECT_ALLOWED_ORIGINS`
+
+What it is **not** responsible for:
+- setting product-specific session cookies for other apps
+- serving as the ongoing `/auth/me` API for external products
+
+The canonical cross-project architecture is documented in:
+- `docs/cross-project-login-architecture.md`
+
 ## Portal
 - `GET /login` → portal login UI (email + Google/Apple actions)
-- `GET /account` → account page (shows current user data from token)
+- `GET /account` → local account page (reads bearer token from localStorage for the login-service UI itself)
 
 ## JWT claims format
 Access token payload includes:
@@ -35,17 +49,34 @@ Role inheritance:
 - `POST /auth/login`
 - `POST /auth/refresh`
 
-## Redirect login flow (reusable for apps)
-1. App opens: `GET /auth/redirect/start?returnTo=<APP_CALLBACK_URL>`
-2. User logs in on portal (`/login`), then service redirects to `returnTo?callbackToken=...`
-3. App backend exchanges token:
+## Redirect login flow for external apps
+
+This is the reusable flow used by LaraLeyla Monitor.
+
+1. **Product frontend** calls its **own backend**:
+   - example: `GET /monitor/api/auth/redirect/start`
+2. **Product backend** builds the login URL:
+   - `GET https://login-service.dashdesign.eu/auth/redirect/start?returnTo=<PRODUCT_CALLBACK_URL>`
+3. User logs in on `/login`
+4. Login-service redirects to:
+   - `<PRODUCT_CALLBACK_URL>?callbackToken=...`
+5. **Product frontend** forwards that callback token to its **own backend**
+6. **Product backend** exchanges it with:
    - `POST /auth/redirect/exchange`
    - body: `{ "callbackToken": "...", "returnTo": "..." }`
-   - returns `{ token, refreshToken, payload }`
+7. **Product backend** sets its own cookie/session
+8. Product frontend reads current user from the **product backend** (`/auth/me` there), not from this service
 
-Security:
-- one-time callback token, short TTL
-- returnTo must pass `REDIRECT_ALLOWED_ORIGINS`
+### Why this separation exists
+- The login-service is the central identity provider.
+- Each product backend owns its own browser session/cookie.
+- Frontends should not directly exchange redirect tokens against the login-service.
+
+### Security properties
+- one-time callback token
+- short callback token TTL
+- exact `returnTo` match during exchange
+- redirect target must pass `REDIRECT_ALLOWED_ORIGINS`
 
 ## Existing core endpoints
 - `POST /auth/email/register/start`
