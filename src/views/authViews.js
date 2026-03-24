@@ -2,7 +2,7 @@ export function renderPortalHtml({ returnTo = '' } = {}) {
   const escaped = JSON.stringify(returnTo || '');
   const helperText = returnTo
     ? 'Dein Login wird direkt in die Ziel-App zurückgeleitet.'
-    : 'Kein returnTo gesetzt. Login geht danach zu /account.';
+    : 'Bitte melde dich mit deinem dashdesign; Account an.';
 
   return `<!doctype html>
 <html lang="de">
@@ -33,26 +33,28 @@ export function renderPortalHtml({ returnTo = '' } = {}) {
     <div class="card">
       <p class="muted">Melde dich mit deinem dashdesign; Account an.</p>
       <form id="f">
-        <label>Benutzername oder E-Mail</label><br/>
+        <label>Benutzername</label><br/>
         <input required type="text" id="u" name="username" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false"/><br/><br/>
         <label>Passwort</label><br/>
         <input required type="password" id="p"/>
         <div id="err"></div>
         <button type="submit">Anmelden</button>
-        <div id="status" class="status status-bad">Bin ich angemeldet?</div>
-        <p class="muted" style="margin:8px 0">Hier siehst du sofort, ob du angemeldet bist.</p>
-        <button class="ghost" id="whoami" type="button">Bin ich angemeldet?</button>
+        <div id="status" class="status status-bad">Bitte melde dich mit deinem Zugang an.</div>
         <div class="row">
           <button class="ghost" id="g" type="button">Google</button>
           <button class="ghost" id="a" type="button">Apple</button>
         </div>
       </form>
-      <p class="muted" style="margin-top:10px">${helperText} <a href="/account">/account</a></p>
+      <p class="muted" style="margin-top:10px">${helperText}</p>
     </div>
   </div>
 <script>
 const returnTo = ${escaped};
-const err = (m='') => document.getElementById('err').innerHTML = m ? '<div class="err">'+m+'</div>' : '';
+const err = (m='') => {
+  const el = document.getElementById('err');
+  if (!el) return;
+  el.innerHTML = m ? '<div class="err">'+m+'</div>' : '';
+};
 const statusEl = document.getElementById('status');
 
 const setStatus = (text, ok = false) => {
@@ -61,25 +63,34 @@ const setStatus = (text, ok = false) => {
   statusEl.className = 'status ' + (ok ? 'status-ok' : 'status-bad');
 };
 
+const ERROR_TEXT = {
+  invalid_credentials: 'Falsche Zugangsdaten.',
+  password_not_set: 'Für dieses Konto ist kein Passwort gesetzt.',
+  invalid_input: 'Bitte Benutzername und Passwort angeben.',
+};
+
 const checkSignedIn = async () => {
   const t = localStorage.getItem('dashdesign_access_token') || '';
-  if (!t) return setStatus('Nein, du bist nicht angemeldet.', false);
+  if (!t) return false;
   try {
     const res = await fetch('/auth/me', { headers: { authorization: 'Bearer ' + t } });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.ok) return setStatus('Session ungültig oder abgelaufen.', false);
+    if (!res.ok || !data?.ok) {
+      if (res.status === 401) localStorage.removeItem('dashdesign_access_token');
+      return false;
+    }
     const email = data?.user?.email || 'unbekannt';
     const roles = (data?.user?.roles || []).join(', ') || 'keine';
-    setStatus('Ja, du bist angemeldet als ' + email + ' (' + roles + ').', true);
+    setStatus('Angemeldet als ' + email + ' (' + roles + ').', true);
     return data;
   } catch {
-    return setStatus('Session prüfen fehlgeschlagen.', false);
+    return false;
   }
 };
 
 const continueWithSession = async () => {
   const token = localStorage.getItem('dashdesign_access_token') || '';
-  if (!token || !returnTo) return null;
+  if (!token || !returnTo) return false;
   try {
     const res = await fetch('/auth/redirect/session', {
       method: 'POST',
@@ -88,15 +99,13 @@ const continueWithSession = async () => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.ok || !data?.redirectTo) {
-      if (res.status === 401) {
-        localStorage.removeItem('dashdesign_access_token');
-      }
-      return null;
+      if (res.status === 401) localStorage.removeItem('dashdesign_access_token');
+      return false;
     }
     location.replace(data.redirectTo);
     return true;
   } catch {
-    return null;
+    return false;
   }
 };
 
@@ -126,7 +135,9 @@ if (params.get('username')) {
   }
 }
 
-bootstrapSession();
+if (localStorage.getItem('dashdesign_access_token')) {
+  bootstrapSession();
+}
 
 document.getElementById('g').onclick = () => {
   const q = returnTo ? ('?returnTo=' + encodeURIComponent(returnTo)) : '';
@@ -147,19 +158,20 @@ document.getElementById('f').onsubmit = async (e) => {
   const body = returnTo ? { username, password, returnTo } : { username, password };
   const res = await fetch(endpoint, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) return err(data?.error || 'login_failed');
+  if (!res.ok || !data?.ok) {
+    if (res.status === 401) localStorage.removeItem('dashdesign_access_token');
+    return err(ERROR_TEXT[data?.error] || data?.error || 'Anmeldung fehlgeschlagen.');
+  }
 
   if (returnTo) {
-    location.href = data.redirectTo;
+    location.replace(data.redirectTo);
     return;
   }
 
   const token = String(data.token || '').replace(/^Bearer\s+/i, '');
   if (token) localStorage.setItem('dashdesign_access_token', token);
-  location.href = '/account';
+  location.replace('/account');
 };
-
-document.getElementById('whoami').onclick = checkSignedIn;
 </script>
 </body>
 </html>`;
@@ -172,43 +184,147 @@ export function renderAccountHtml() {
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>dashdesign Account</title>
-  <style>body{font-family:Inter,system-ui,Arial,sans-serif;background:#0f1116;color:#fff;margin:0}.wrap{max-width:680px;margin:40px auto;padding:24px}.card{background:#171a22;border:1px solid #2a2f3d;border-radius:12px;padding:20px}pre{white-space:pre-wrap;background:#0f1116;border:1px solid #2a2f3d;padding:12px;border-radius:8px}button{padding:10px 14px;border-radius:8px;border:none;background:#6d5efc;color:#fff;cursor:pointer}</style>
+  <style>
+    body{font-family:Inter,system-ui,Arial,sans-serif;background:#0f1116;color:#fff;margin:0}
+    .wrap{max-width:760px;margin:40px auto;padding:24px}
+    .card{background:#171a22;border:1px solid #2a2f3d;border-radius:12px;padding:20px}
+    .muted{color:#aab0c0}
+    label{display:block;margin-top:12px;margin-bottom:6px}
+    input{width:100%;padding:10px;border-radius:8px;border:1px solid #363d50;background:#0f1116;color:#fff}
+    button{padding:10px 14px;border-radius:8px;border:none;background:#6d5efc;color:#fff;cursor:pointer}
+    .ghost{background:#2f3650}
+    .status{margin-top:10px;padding:12px;border-radius:10px}
+    .status-ok{border:1px solid #2b6f5a;background:#113d2e}
+    .status-bad{border:1px solid #6d2d36;background:#3d1a23}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .grid-1{grid-column:1/-1}
+    pre{white-space:pre-wrap;background:#0f1116;border:1px solid #2a2f3d;padding:12px;border-radius:8px}
+    .actions{margin-top:14px;display:flex;gap:12px;flex-wrap:wrap}
+  </style>
 </head>
 <body>
   <div class="wrap">
     <h2>Account</h2>
     <div class="card">
       <h3>Profil</h3>
-      <pre id="out">Lade…</pre>
-      <div style="margin-top:12px;">
-        <strong>Nächster Schritt:</strong> Hier siehst du deinen angemeldeten Nutzer und kannst danach auf andere Endpunkte wechseln.
+      <div id="status" class="status status-bad">Nicht angemeldet.</div>
+      <div id="out">Lade…</div>
+
+      <h4>Kontodaten</h4>
+      <div class="grid">
+        <div><label>Benutzername / E-Mail</label><pre id="email">-</pre></div>
+        <div><label>Provider</label><pre id="provider">-</pre></div>
+        <div><label>Rolle</label><pre id="role">-</pre></div>
+        <div><label>Admin</label><pre id="admin">-</pre></div>
+        <div class="grid-1"><label>Registriert am</label><pre id="created">-</pre></div>
+        <div class="grid-1"><label>Passwort zuletzt geändert</label><pre id="passwordChanged">-</pre></div>
       </div>
-      <button id="logout">Logout lokal</button>
+
+      <h4>Persönliche Daten</h4>
+      <div class="grid">
+        <div><label for="first">Vorname</label><input id="first"/></div>
+        <div><label for="last">Nachname</label><input id="last"/></div>
+        <div class="grid-1">
+          <button id="saveNames">Vor- / Nachname speichern</button>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="logout" class="ghost">Abmelden</button>
+        <button id="refresh" class="ghost">Aktualisieren</button>
+      </div>
     </div>
   </div>
 <script>
-async function load() {
+const setStatus = (text, ok = false) => {
+  const s = document.getElementById('status');
+  if (!s) return;
+  s.textContent = text;
+  s.className = 'status ' + (ok ? 'status-ok' : 'status-bad');
+};
+
+const toDateTime = (v) => {
+  if (!v) return '-';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleString('de-DE', {
+    year: '2-digit',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
+const setValue = (id, value) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value == null ? '-' : String(value);
+};
+
+const fill = (profile) => {
+  setValue('email', profile?.email || '-');
+  setValue('provider', profile?.provider || '-');
+  setValue('role', Array.isArray(profile?.roles) ? profile.roles.join(', ') : 'keine');
+  setValue('admin', profile?.isAdmin ? 'Ja' : 'Nein');
+  setValue('created', toDateTime(profile?.createdAt));
+  setValue('passwordChanged', toDateTime(profile?.lastPasswordChangedAt));
+  const firstEl = document.getElementById('first');
+  const lastEl = document.getElementById('last');
+  if (firstEl) firstEl.value = profile?.firstName || '';
+  if (lastEl) lastEl.value = profile?.lastName || '';
+  const out = document.getElementById('out');
+  if (out) out.textContent = profile ? JSON.stringify(profile, null, 2) : 'Keine Profildaten verfügbar.';
+};
+
+const load = async () => {
   const token = localStorage.getItem('dashdesign_access_token') || '';
-  if (!token) { document.getElementById('out').textContent = 'Nicht angemeldet. Bitte /login öffnen.'; return; }
-  const res = await fetch('/auth/me', { headers: { authorization: 'Bearer ' + token } });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) {
-    document.getElementById('out').textContent = JSON.stringify(data || {}, null, 2);
+  if (!token) {
+    localStorage.removeItem('dashdesign_access_token');
+    location.replace('/login?returnTo=' + encodeURIComponent('/account'));
     return;
   }
 
-  const user = data.user || {};
-  const rows = [
-    'ID: ' + (user.id || '-'),
-    'E-Mail/Benutzer: ' + (user.email || '-'),
-    'Provider: ' + (user.provider || '-'),
-    'Rollen: ' + ((user.roles || []).join(', ') || 'keine'),
-  ];
-  document.getElementById('out').textContent = rows.join('\\n');
-}
+  const res = await fetch('/auth/me', { headers: { authorization: 'Bearer ' + token } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    localStorage.removeItem('dashdesign_access_token');
+    setStatus('Session nicht gültig. Weiterleitung zum Login…', false);
+    location.replace('/login?returnTo=' + encodeURIComponent('/account'));
+    return;
+  }
+
+  fill(data.user || {});
+  setStatus('Profil geladen.', true);
+};
+
+const saveNames = async () => {
+  const token = localStorage.getItem('dashdesign_access_token') || '';
+  const firstName = String(document.getElementById('first').value || '').trim();
+  const lastName = String(document.getElementById('last').value || '').trim();
+  const res = await fetch('/auth/profile', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+    body: JSON.stringify({ firstName, lastName }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    setStatus(data?.error || 'Änderung nicht gespeichert.', false);
+    return;
+  }
+  fill(data.profile || {});
+  setStatus('Gespeichert.', true);
+};
+
+document.getElementById('saveNames').onclick = saveNames;
+document.getElementById('refresh').onclick = load;
+document.getElementById('logout').onclick = () => {
+  localStorage.removeItem('dashdesign_access_token');
+  location.replace('/login');
+};
 
 load();
-document.getElementById('logout').onclick = () => { localStorage.removeItem('dashdesign_access_token'); location.reload(); };
 </script>
 </body>
 </html>`;

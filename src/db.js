@@ -17,10 +17,15 @@ export async function initDb() {
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
       provider TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
       last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT');
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS auth_credentials (

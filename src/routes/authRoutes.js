@@ -254,18 +254,120 @@ export function createAuthRouter() {
     const claims = readAccessClaims(req);
     if (!claims) return res.status(401).json({ ok: false, error: 'auth_invalid' });
 
-    const userQ = await pool.query('SELECT id, email, provider FROM users WHERE id = $1', [claims.sub]);
+    const userQ = await pool.query(
+      `SELECT
+         u.id, u.email, u.provider, u.first_name, u.last_name, u.created_at,
+         c.updated_at as password_changed_at
+       FROM users u
+       LEFT JOIN auth_credentials c ON c.user_id = u.id
+       WHERE u.id = $1`,
+      [claims.sub]
+    );
     if (userQ.rowCount === 0) return res.status(404).json({ ok: false, error: 'user_not_found' });
     const user = userQ.rows[0];
     const roles = resolveRoles(user.email, user.provider);
+    const isAdmin = roles.includes('admin');
+    const payload = {
+      id: user.id,
+      email: user.email,
+      provider: user.provider,
+      firstName: user.first_name || '',
+      lastName: user.last_name || '',
+      createdAt: user.created_at,
+      lastPasswordChangedAt: user.password_changed_at,
+      isAdmin,
+      roles,
+    };
 
-    return res.json({ ok: true, user: { id: user.id, email: user.email, provider: user.provider, roles }, claims: { ...claims, roles } });
+    return res.json({ ok: true, user: payload, claims: { ...claims, roles } });
   });
 
   router.get('/auth/session', authLimiter, async (req, res) => {
     const claims = readAccessClaims(req);
     if (!claims) return res.status(401).json({ ok: false, error: 'auth_invalid' });
     return res.json({ ok: true, claims });
+  });
+
+  router.get('/auth/profile', authLimiter, async (req, res) => {
+    const claims = readAccessClaims(req);
+    if (!claims) return res.status(401).json({ ok: false, error: 'auth_invalid' });
+
+    const userQ = await pool.query(
+      `SELECT
+         u.id, u.email, u.provider, u.first_name, u.last_name, u.created_at,
+         c.updated_at as password_changed_at
+       FROM users u
+       LEFT JOIN auth_credentials c ON c.user_id = u.id
+       WHERE u.id = $1`,
+      [claims.sub]
+    );
+    if (userQ.rowCount === 0) return res.status(404).json({ ok: false, error: 'user_not_found' });
+
+    const user = userQ.rows[0];
+    const roles = resolveRoles(user.email, user.provider);
+    const isAdmin = roles.includes('admin');
+
+    return res.json({
+      ok: true,
+      profile: {
+        id: user.id,
+        email: user.email,
+        provider: user.provider,
+        firstName: user.first_name || '',
+        lastName: user.last_name || '',
+        createdAt: user.created_at,
+        lastPasswordChangedAt: user.password_changed_at,
+        isAdmin,
+        roles,
+      },
+    });
+  });
+
+  router.patch('/auth/profile', authLimiter, async (req, res) => {
+    const claims = readAccessClaims(req);
+    if (!claims) return res.status(401).json({ ok: false, error: 'auth_invalid' });
+
+    const firstName = String(req.body?.firstName || '').trim();
+    const lastName = String(req.body?.lastName || '').trim();
+    if (!firstName && !lastName) return res.status(400).json({ ok: false, error: 'nothing_to_update' });
+    if (firstName && firstName.length > 80) return res.status(400).json({ ok: false, error: 'first_name_too_long' });
+    if (lastName && lastName.length > 80) return res.status(400).json({ ok: false, error: 'last_name_too_long' });
+
+    await pool.query(
+      `UPDATE users
+       SET first_name = COALESCE(NULLIF($1, ''), first_name),
+           last_name = COALESCE(NULLIF($2, ''), last_name)
+       WHERE id = $3`,
+      [firstName || null, lastName || null, claims.sub]
+    );
+
+    const updated = await pool.query(
+      `SELECT
+         u.id, u.email, u.provider, u.first_name, u.last_name, u.created_at,
+         c.updated_at as password_changed_at
+       FROM users u
+       LEFT JOIN auth_credentials c ON c.user_id = u.id
+       WHERE u.id = $1`,
+      [claims.sub]
+    );
+    const user = updated.rows[0];
+    const roles = resolveRoles(user.email, user.provider);
+    await audit(req, 'profile_update', claims.sub, { firstName, lastName });
+
+    return res.json({
+      ok: true,
+      profile: {
+        id: user.id,
+        email: user.email,
+        provider: user.provider,
+        firstName: user.first_name || '',
+        lastName: user.last_name || '',
+        createdAt: user.created_at,
+        lastPasswordChangedAt: user.password_changed_at,
+        isAdmin: roles.includes('admin'),
+        roles,
+      },
+    });
   });
 
   router.post('/onboarding/profile', authLimiter, async (req, res) => {
