@@ -72,14 +72,14 @@ export async function issueRedirectCallbackToken(userId, returnTo) {
 
 export async function performPasswordLogin(username, password) {
   const normalized = String(username).toLowerCase().trim();
-  const userId = `email:${normalized}`;
+  const userIds = [`email:${normalized}`, `username:${normalized}`];
 
   const q = await pool.query(
     `SELECT u.id, u.email, u.provider, c.password_hash
      FROM users u
      LEFT JOIN auth_credentials c ON c.user_id = u.id
-     WHERE u.id = $1`,
-    [userId]
+     WHERE u.id = ANY($1::text[]) OR LOWER(u.email) = $2`,
+    [userIds, normalized]
   );
 
   if (q.rowCount === 0) return { ok: false, status: 401, error: 'invalid_credentials' };

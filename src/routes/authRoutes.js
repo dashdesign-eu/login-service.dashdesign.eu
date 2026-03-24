@@ -29,12 +29,13 @@ export function createAuthRouter() {
   const router = express.Router();
 
   router.post('/auth/email/register/start', authLimiter, async (req, res) => {
-    const { email, password } = req.body || {};
-    if (!email || !password || password.length < 8) {
+    const { email, username, password } = req.body || {};
+    const identifier = String(username || email || '').trim();
+    if (!identifier || !password || password.length < 8) {
       return res.status(400).json({ ok: false, error: 'invalid_input' });
     }
 
-    const normalized = String(email).toLowerCase().trim();
+    const normalized = identifier.toLowerCase();
     const code = String(Math.floor(100000 + Math.random() * 900000));
     const codeHash = await bcrypt.hash(code, 10);
 
@@ -49,10 +50,11 @@ export function createAuthRouter() {
   });
 
   router.post('/auth/email/register/verify', authLimiter, async (req, res) => {
-    const { email, password, code } = req.body || {};
-    if (!email || !password || !code) return res.status(400).json({ ok: false, error: 'invalid_input' });
+    const { email, username, password, code } = req.body || {};
+    const identifier = String(username || email || '').trim();
+    if (!identifier || !password || !code) return res.status(400).json({ ok: false, error: 'invalid_input' });
 
-    const normalized = String(email).toLowerCase().trim();
+    const normalized = identifier.toLowerCase();
     const latest = await pool.query(
       `SELECT id, code_hash, expires_at, consumed_at
        FROM email_otp_codes
@@ -99,18 +101,19 @@ export function createAuthRouter() {
 
   router.post('/internal/register', authLimiter, async (req, res) => {
     const token = req.get('x-bootstrap-token') || req.query?.token || '';
-    const { email, password, admin } = req.body || {};
+    const { email, username, password, admin } = req.body || {};
+    const identifier = String(username || email || '').trim();
     if (!HIDDEN_REGISTRATION_SECRET) {
       return res.status(404).json({ ok: false, error: 'route_not_available' });
     }
     if (token !== HIDDEN_REGISTRATION_SECRET) {
       return res.status(404).json({ ok: false, error: 'route_not_found' });
     }
-    if (!email || !password) return res.status(400).json({ ok: false, error: 'invalid_input' });
+    if (!identifier || !password) return res.status(400).json({ ok: false, error: 'invalid_input' });
     if (String(password).length < 8) return res.status(400).json({ ok: false, error: 'password_too_short' });
 
     const provider = admin ? BOOTSTRAP_ADMIN_PROVIDER : 'email';
-    const user = await upsertEmailUser({ email, password, provider });
+    const user = await upsertEmailUser({ email: identifier, password, provider });
     await audit(req, 'internal_register', user.id, { email: user.email, provider: user.provider });
     return res.json({ ok: true, user: { id: user.id, email: user.email, provider: user.provider } });
   });
