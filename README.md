@@ -65,15 +65,8 @@ That means Coolify can deploy it without an external database service.
 Recommended Coolify envs:
 
 ```env
+PORT=8080
 APP_BASE_URL=https://login-service.dashdesign.eu
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REDIRECT_URI=https://login-service.dashdesign.eu/auth/google/callback
-APPLE_TEAM_ID=...
-APPLE_CLIENT_ID=eu.dashdesign.loginservice
-APPLE_KEY_ID=...
-APPLE_PRIVATE_KEY_PATH=./secrets/AuthKey.p8
-APPLE_REDIRECT_URI=https://login-service.dashdesign.eu/auth/apple/callback
 POSTGRES_DB=login_service
 POSTGRES_USER=login_service
 POSTGRES_PASSWORD=<strong-random-password>
@@ -84,6 +77,19 @@ CORS_ALLOWLIST=https://login-service.dashdesign.eu
 MONITOR_VIEWER_EMAILS=
 MONITOR_EDITOR_EMAILS=
 MONITOR_ADMIN_EMAILS=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=https://login-service.dashdesign.eu/auth/google/callback
+APPLE_TEAM_ID=
+APPLE_CLIENT_ID=eu.dashdesign.loginservice
+APPLE_KEY_ID=
+APPLE_PRIVATE_KEY_PATH=./secrets/AuthKey.p8
+APPLE_REDIRECT_URI=https://login-service.dashdesign.eu/auth/apple/callback
 ```
+
+Coolify note:
+- assign the domain as `https://login-service.dashdesign.eu:8080`
+- the `:8080` tells Coolify the internal container port; externally the site is still served on normal HTTPS
+- Postgres stays private inside the compose network
 
 If Google/Apple auth is not needed immediately, those provider envs can stay empty; email/redirect flow will still work.
