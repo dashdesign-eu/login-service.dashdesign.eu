@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:?login_service}
+      - POSTGRES_USER=${POSTGRES_USER:?login_service}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?}
+    volumes:
+      - login-service-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-login_service} -d ${POSTGRES_DB:-login_service}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  login-service:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    environment:
+      - PORT=${PORT:?8080}
+      - APP_BASE_URL=${APP_BASE_URL:?https://login-service.dashdesign.eu}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://login-service.dashdesign.eu/auth/google/callback}
+      - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
+      - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-eu.dashdesign.loginservice}
+      - APPLE_KEY_ID=${APPLE_KEY_ID:-}
+      - APPLE_PRIVATE_KEY_PATH=${APPLE_PRIVATE_KEY_PATH:-./secrets/AuthKey.p8}
+      - APPLE_REDIRECT_URI=${APPLE_REDIRECT_URI:-https://login-service.dashdesign.eu/auth/apple/callback}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:?login_service}
+      - POSTGRES_USER=${POSTGRES_USER:?login_service}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?}
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET:?}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?}
+      - ACCESS_TTL_SECONDS=${ACCESS_TTL_SECONDS:-900}
+      - REFRESH_TTL_SECONDS=${REFRESH_TTL_SECONDS:-2592000}
+      - OTP_TTL_MINUTES=${OTP_TTL_MINUTES:-10}
+      - REDIRECT_TOKEN_TTL_SECONDS=${REDIRECT_TOKEN_TTL_SECONDS:-120}
+      - REDIRECT_ALLOWED_ORIGINS=${REDIRECT_ALLOWED_ORIGINS:-https://laraleyla-monitor.diestadt.app,https://laraleyla-monitor.pages.dev}
+      - CORS_ALLOWLIST=${CORS_ALLOWLIST:-https://login-service.dashdesign.eu}
+      - MONITOR_VIEWER_EMAILS=${MONITOR_VIEWER_EMAILS:-}
+      - MONITOR_EDITOR_EMAILS=${MONITOR_EDITOR_EMAILS:-}
+      - MONITOR_ADMIN_EMAILS=${MONITOR_ADMIN_EMAILS:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  login-service-postgres-data:
