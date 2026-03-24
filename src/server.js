@@ -283,7 +283,7 @@ document.getElementById('logout').onclick = () => { localStorage.removeItem('das
 }
 
 app.get('/', (_req, res) => {
-  res.redirect('/login');
+  return res.status(200).type('text/html').send('<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>dashdesign Login</title></head><body style="font-family:Inter,system-ui,Arial,sans-serif;background:#0f1116;color:#fff;padding:32px"><h2>dashdesign Login Service</h2><p>Service läuft.</p><ul><li><a href="/login">/login</a></li><li><a href="/health">/health</a></li></ul></body></html>');
 });
 
 app.get('/login', (req, res) => {
