@@ -70,15 +70,63 @@ const checkSignedIn = async () => {
     if (!res.ok || !data?.ok) return setStatus('Session ungültig oder abgelaufen.', false);
     const email = data?.user?.email || 'unbekannt';
     const roles = (data?.user?.roles || []).join(', ') || 'keine';
-    return setStatus('Ja, du bist angemeldet als ' + email + ' (' + roles + ').', true);
+    setStatus('Ja, du bist angemeldet als ' + email + ' (' + roles + ').', true);
+    return data;
   } catch {
     return setStatus('Session prüfen fehlgeschlagen.', false);
   }
 };
 
-if (localStorage.getItem('dashdesign_access_token')) {
-  checkSignedIn();
+const continueWithSession = async () => {
+  const token = localStorage.getItem('dashdesign_access_token') || '';
+  if (!token || !returnTo) return null;
+  try {
+    const res = await fetch('/auth/redirect/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+      body: JSON.stringify({ returnTo }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok || !data?.redirectTo) {
+      if (res.status === 401) {
+        localStorage.removeItem('dashdesign_access_token');
+      }
+      return null;
+    }
+    location.replace(data.redirectTo);
+    return true;
+  } catch {
+    return null;
+  }
+};
+
+const bootstrapSession = async () => {
+  const data = await checkSignedIn();
+  if (!data) return;
+  if (returnTo) {
+    const ok = await continueWithSession();
+    if (ok) return;
+    setStatus('Login-Weiterleitung ist nicht möglich. Bitte erneut anmelden.', false);
+    return;
+  }
+  setStatus('Du bist bereits angemeldet. Weiterleitung zum Profil...', true);
+  location.replace('/account');
+};
+
+const params = new URLSearchParams(window.location.search);
+if (params.get('username')) {
+  const pre = params.get('username');
+  const input = document.getElementById('u');
+  if (input) input.value = pre;
+  params.delete('username');
+  const nextUrl = params.toString();
+  const cleanUrl = nextUrl ? '/login?' + nextUrl : '/login';
+  if (window.history?.replaceState) {
+    window.history.replaceState({}, '', cleanUrl);
+  }
 }
+
+bootstrapSession();
 
 document.getElementById('g').onclick = () => {
   const q = returnTo ? ('?returnTo=' + encodeURIComponent(returnTo)) : '';
@@ -130,8 +178,11 @@ export function renderAccountHtml() {
   <div class="wrap">
     <h2>Account</h2>
     <div class="card">
-      <p>Bin ich angemeldet?</p>
+      <h3>Profil</h3>
       <pre id="out">Lade…</pre>
+      <div style="margin-top:12px;">
+        <strong>Nächster Schritt:</strong> Hier siehst du deinen angemeldeten Nutzer und kannst danach auf andere Endpunkte wechseln.
+      </div>
       <button id="logout">Logout lokal</button>
     </div>
   </div>
@@ -141,7 +192,19 @@ async function load() {
   if (!token) { document.getElementById('out').textContent = 'Nicht angemeldet. Bitte /login öffnen.'; return; }
   const res = await fetch('/auth/me', { headers: { authorization: 'Bearer ' + token } });
   const data = await res.json().catch(() => ({}));
-  document.getElementById('out').textContent = JSON.stringify(data?.user || data, null, 2);
+  if (!res.ok || !data?.ok) {
+    document.getElementById('out').textContent = JSON.stringify(data || {}, null, 2);
+    return;
+  }
+
+  const user = data.user || {};
+  const rows = [
+    'ID: ' + (user.id || '-'),
+    'E-Mail/Benutzer: ' + (user.email || '-'),
+    'Provider: ' + (user.provider || '-'),
+    'Rollen: ' + ((user.roles || []).join(', ') || 'keine'),
+  ];
+  document.getElementById('out').textContent = rows.join('\\n');
 }
 
 load();

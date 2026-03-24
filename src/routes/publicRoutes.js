@@ -12,8 +12,9 @@ export function createPublicRouter() {
   });
 
   router.get('/login', (req, res) => {
-    const returnTo = safeReturnTo(req.query?.returnTo);
-    if (req.query?.returnTo && !returnTo) return res.status(400).send('invalid_return_to');
+    const requestedReturnTo = req.query?.returnTo || req.query?.return_to || req.query?.next;
+    const returnTo = safeReturnTo(requestedReturnTo);
+    if (requestedReturnTo && !returnTo) return res.status(400).send('invalid_return_to');
     res.type('html').send(renderPortalHtml({ returnTo: returnTo || '' }));
   });
 

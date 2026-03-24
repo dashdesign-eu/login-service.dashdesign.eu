@@ -124,7 +124,7 @@ export function createAuthRouter() {
   });
 
   router.get('/auth/redirect/start', (req, res) => {
-    const returnTo = safeReturnTo(req.query?.returnTo);
+    const returnTo = safeReturnTo(req.query?.returnTo || req.query?.return_to || req.query?.next);
     if (!returnTo) return res.status(400).json({ ok: false, error: 'invalid_return_to' });
     res.redirect(`/login?returnTo=${encodeURIComponent(returnTo)}`);
   });
@@ -132,7 +132,7 @@ export function createAuthRouter() {
   router.post('/auth/redirect/complete', authLimiter, async (req, res) => {
     const identifier = resolveIdentifier(req.body);
     const password = String(req.body?.password || '').trim();
-    const returnTo = req.body?.returnTo;
+    const returnTo = req.body?.returnTo || req.body?.return_to || req.body?.next;
     const safe = safeReturnTo(returnTo);
     if (!identifier || !password || !safe) return res.status(400).json({ ok: false, error: 'invalid_input' });
 
@@ -144,6 +144,24 @@ export function createAuthRouter() {
     redirectUrl.searchParams.set('callbackToken', callbackToken);
 
     await audit(req, 'redirect_login_success', result.user.id, { returnTo: safe });
+    return res.json({ ok: true, redirectTo: redirectUrl.toString() });
+  });
+
+  router.post('/auth/redirect/session', authLimiter, async (req, res) => {
+    const claims = readAccessClaims(req);
+    if (!claims) return res.status(401).json({ ok: false, error: 'auth_invalid' });
+
+    const safe = safeReturnTo(req.body?.returnTo || req.body?.return_to || req.body?.next);
+    if (!safe) return res.status(400).json({ ok: false, error: 'invalid_input' });
+
+    const userQ = await pool.query('SELECT id, email, provider FROM users WHERE id = $1', [claims.sub]);
+    if (userQ.rowCount === 0) return res.status(404).json({ ok: false, error: 'user_not_found' });
+
+    const callbackToken = await issueRedirectCallbackToken(claims.sub, safe);
+    const redirectUrl = new URL(safe);
+    redirectUrl.searchParams.set('callbackToken', callbackToken);
+
+    await audit(req, 'redirect_session_continue', claims.sub, { returnTo: safe });
     return res.json({ ok: true, redirectTo: redirectUrl.toString() });
   });
 
