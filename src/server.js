@@ -242,6 +242,9 @@ async function performPasswordLogin(username, password) {
 
 function renderPortalHtml({ returnTo = '' } = {}) {
   const escaped = JSON.stringify(returnTo || '');
+  const helperText = returnTo
+    ? 'Dein Login wird direkt in die Ziel-App zurückgeleitet.'
+    : 'Kein returnTo gesetzt. Login geht danach zu /account.';
   return `<!doctype html>
 <html lang="de">
 <head>
@@ -257,6 +260,9 @@ function renderPortalHtml({ returnTo = '' } = {}) {
     .ghost{background:#222839}
     .muted{color:#aab0c0;font-size:13px}
     .err{background:#431f24;border:1px solid #6d2d36;padding:10px;border-radius:8px;margin:10px 0}
+    .status{margin-top:10px;padding:12px;border-radius:10px}
+    .status-ok{border:1px solid #2b6f5a;background:#113d2e}
+    .status-bad{border:1px solid #6d2d36;background:#3d1a23}
     .row{display:flex;gap:10px}
     .row > *{flex:1}
     a{color:#9bb3ff}
@@ -268,23 +274,51 @@ function renderPortalHtml({ returnTo = '' } = {}) {
     <div class="card">
       <p class="muted">Melde dich mit deinem dashdesign Account an.</p>
       <form id="f">
-        <label>E-Mail</label><br/>
-        <input required type="email" id="u"/><br/><br/>
+        <label>Benutzername oder E-Mail</label><br/>
+        <input required type="text" id="u" autocomplete="username"/><br/><br/>
         <label>Passwort</label><br/>
         <input required type="password" id="p"/>
         <div id="err"></div>
         <button type="submit">Anmelden (E-Mail)</button>
+        <div id="status" class="status status-bad">Bin ich angemeldet?</div>
+        <p class="muted" style="margin:8px 0">Hier siehst du sofort, ob du angemeldet bist.</p>
+        <button class="ghost" id="whoami" type="button">Bin ich angemeldet?</button>
         <div class="row">
           <button class="ghost" id="g" type="button">Google</button>
           <button class="ghost" id="a" type="button">Apple</button>
         </div>
       </form>
-      <p class="muted" style="margin-top:10px">Nach Login ohne returnTo: <a href="/account">/account</a></p>
+      <p class="muted" style="margin-top:10px">${helperText} <a href="/account">/account</a></p>
     </div>
   </div>
 <script>
 const returnTo = ${escaped};
 const err = (m='') => document.getElementById('err').innerHTML = m ? '<div class="err">'+m+'</div>' : '';
+const statusEl = document.getElementById('status');
+const token = localStorage.getItem('dashdesign_access_token') || '';
+
+const setStatus = (text, ok = false) => {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  statusEl.className = 'status ' + (ok ? 'status-ok' : 'status-bad');
+};
+
+const checkSignedIn = async () => {
+  const t = localStorage.getItem('dashdesign_access_token') || '';
+  if (!t) return setStatus('Nein, du bist nicht angemeldet.', false);
+  try {
+    const res = await fetch('/auth/me', { headers: { authorization: 'Bearer ' + t } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) return setStatus('Session ungültig oder abgelaufen.', false);
+    const email = data?.user?.email || 'unbekannt';
+    const roles = (data?.user?.roles || []).join(', ') || 'keine';
+    return setStatus(`Ja, du bist angemeldet als ${email} (${roles}).`, true);
+  } catch {
+    return setStatus('Session prüfen fehlgeschlagen.', false);
+  }
+};
+
+if (token) checkSignedIn();
 
 document.getElementById('g').onclick = () => {
   const q = returnTo ? ('?returnTo=' + encodeURIComponent(returnTo)) : '';
@@ -315,6 +349,7 @@ document.getElementById('f').onsubmit = async (e) => {
   if (token) localStorage.setItem('dashdesign_access_token', token);
   location.href = '/account';
 };
+document.getElementById('whoami').onclick = checkSignedIn;
 </script>
 </body>
 </html>`;
@@ -333,7 +368,7 @@ function renderAccountHtml() {
   <div class="wrap">
     <h2>Account</h2>
     <div class="card">
-      <p>Aktuelle Session:</p>
+      <p>Bin ich angemeldet?</p>
       <pre id="out">Lade…</pre>
       <button id="logout">Logout lokal</button>
     </div>
@@ -354,7 +389,7 @@ document.getElementById('logout').onclick = () => { localStorage.removeItem('das
 }
 
 app.get('/', (_req, res) => {
-  return res.status(200).type('text/html').send('<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>dashdesign Login</title></head><body style="font-family:Inter,system-ui,Arial,sans-serif;background:#0f1116;color:#fff;padding:32px"><h2>dashdesign Login Service</h2><p>Service läuft.</p><ul><li><a href="/login">/login</a></li><li><a href="/health">/health</a></li></ul></body></html>');
+  return res.redirect('/login');
 });
 
 app.get('/login', (req, res) => {
